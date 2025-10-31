@@ -1,45 +1,44 @@
-﻿from __future__ import annotations
-import sys, argparse, pathlib
+﻿# Kheiven D'Haiti — sagemtl CLI
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
 from sagemtl.clean.text_normalize import normalize_text
 
 
-def _resolve_in(path: str | None) -> str:
-    if not path or path == "-":
-        return sys.stdin.read()
-    return pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+def _read_text(path: str | None) -> str:
+    if path and path != "-":
+        return Path(path).read_text(encoding="utf-8", errors="ignore")
+    return sys.stdin.read()
 
 
-def _write_out(text: str, out_path: str | None) -> None:
-    if not out_path or out_path == "-":
-        sys.stdout.write(text)
+def _write_text(s: str, out_path: str | None) -> None:
+    if out_path:
+        Path(out_path).write_text(s, encoding="utf-8", newline="\n")
     else:
-        pathlib.Path(out_path).write_text(text, encoding="utf-8")
+        sys.stdout.buffer.write(s.encode("utf-8"))
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="sagemtl", description="SageMTL toolchain CLI")
-    sp = p.add_subparsers(dest="cmd", required=True)
+    p = argparse.ArgumentParser(prog="sagemtl", description="Text cleaning/normalization utilities")
+    sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_clean = sp.add_parser("clean", help="normalize text for MTL pipelines")
-    p_clean.add_argument("--in", dest="inp", default="-", help="input file or '-' (stdin)")
-    p_clean.add_argument("--out", dest="out", default="-", help="output file or '-' (stdout)")
-    p_clean.add_argument("--no-smart", action="store_true", help="strip smart quotes/dashes")
-    p_clean.add_argument("--collapse-ws", action="store_true", help="collapse whitespace")
+    p_clean = sub.add_parser("clean", help="normalize text (stdin or file)")
+    p_clean.add_argument("--in", dest="inp", default="-", help="input path or '-' for stdin")
+    p_clean.add_argument("--out", dest="out", default=None, help="output path (default: stdout)")
 
     args = p.parse_args(argv)
 
     if args.cmd == "clean":
-        raw = _resolve_in(args.inp)
-        out = normalize_text(
-            raw,
-            strip_smart=args.no_smart,
-            collapse_ws=args.collapse_ws,
-        )
-        _write_out(out, args.out)
+        src = _read_text(args.inp)
+        out = normalize_text(src).replace("\r\n", "\n").replace("\r", "\n")
+        if not out.endswith("\n"):
+            out += "\n"
+        _write_text(out, args.out)
         return 0
-
-    p.error("unknown command")
-    return 2
+    return 1
 
 
 if __name__ == "__main__":

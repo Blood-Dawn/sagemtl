@@ -1,6 +1,6 @@
 # Kheiven D'Haiti — translator backends
 from dataclasses import dataclass
-from typing import List
+
 import torch
 
 

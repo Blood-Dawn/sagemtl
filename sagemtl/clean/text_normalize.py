@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# Kheiven D'Haiti — text normalization
+from __future__ import annotations
 
 import re
 import unicodedata
@@ -6,39 +7,33 @@ import unicodedata
 _SMART = {
     "\u2018": "'",
     "\u2019": "'",
+    "\u201b": "'",
     "\u201c": '"',
     "\u201d": '"',
     "\u2013": "-",
-    "\u2014": "-",  # en/em dash -> hyphen
-    "\u00a0": " ",  # nbsp -> space
+    "\u2014": "-",
+    "\u2212": "-",
+    "\u2026": "...",
 }
+_ZW = {"\u200b", "\u200c", "\u200d", "\ufeff", "\u2060"}
 
 
-def _desmart(s: str) -> str:
-    for k, v in _SMART.items():
-        s = s.replace(k, v)
-    return s
+def _strip_trailing_ws(s: str) -> str:
+    return "\n".join(re.sub(r"[ \t]+$", "", line) for line in s.splitlines())
 
 
-def normalize_text(text: str, *, strip_smart: bool = True, collapse_ws: bool = True) -> str:
-    # NFKC to fold width/compat characters (e.g., full-width)
-    s = unicodedata.normalize("NFKC", text)
-    if strip_smart:
-        s = _desmart(s)
-    # normalize line endings, trim trailing spaces
-    s = s.replace("\r\n", "\n").replace("\r", "\n")
-    s = "\n".join(line.rstrip() for line in s.split("\n"))
-    if collapse_ws:
-        # collapse 2+ spaces -> single, keep newlines
-        s = re.sub(r"[ \t]{2,}", " ", s)
-        # collapse 3+ newlines -> 2
-        s = re.sub(r"\n{3,}", "\n\n", s)
-    return s.strip() + ("\n" if s.strip() else "")
+def normalize_text(text: str) -> str:
+    if not isinstance(text, str):
+        text = str(text)
+    text = text.translate({ord(k): v for k, v in _SMART.items()})
+    text = unicodedata.normalize("NFKC", text)
+    for z in _ZW:
+        text = text.replace(z, "")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = _strip_trailing_ws(text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text
 
 
-# back-compat alias for tests
-__all__ = list(set(globals().get("__all__", []))) + ["basic_clean"]
-
-
-def basic_clean(text: str) -> str:
+def basic_clean(text: str) -> str:  # back-compat for tests
     return normalize_text(text)
