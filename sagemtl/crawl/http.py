@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 try:
     import importlib
+
     httpx = importlib.import_module("httpx")
 except Exception:  # pragma: no cover
     httpx = None
