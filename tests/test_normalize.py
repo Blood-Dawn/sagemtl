@@ -7,4 +7,4 @@ def test_basic():
     out = basic_clean(s)
     assert '"' in out and "-" in out
     assert "\r" not in out and "\u200b" not in out
-    assert out.endswith("fine\n") or out.endswith("fine")
+    assert out.endswith("\n") is False  # normalizer shouldn't force final LF
