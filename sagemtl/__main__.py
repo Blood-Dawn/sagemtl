@@ -1,4 +1,5 @@
-﻿from sagemtl.cli import main
+﻿# Kheiven D'Haiti — module launcher
+from sagemtl.cli import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

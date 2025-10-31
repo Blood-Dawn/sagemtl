@@ -1,26 +1,29 @@
-# Kheiven D'Haiti — crawler
-import httpx
-from selectolax.parser import HTMLParser
+# Kheiven D'Haiti — minimal HTTP client
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+try:
+    import importlib
+    httpx = importlib.import_module("httpx")
+except Exception:  # pragma: no cover
+    httpx = None
+
+if TYPE_CHECKING:  # help static analyzers find httpx
+    import httpx  # type: ignore  # pragma: no cover
+
+_UA = "sagemtl/0.0.1 (+https://github.com/Blood-Dawn/sagemtl)"
 
 
-def _main_text(html: str) -> str:
-    tree = HTMLParser(html)
-    # prefer <article>, else largest texty node heuristic
-    art = tree.css_first("article")
-    if art:
-        return art.text(separator="\n").strip()
-    best = ""
-    for node in tree.css("p, div"):
-        t = node.text(separator=" ").strip()
-        if len(t) > len(best):
-            best = t
-    return best.strip()
-
-
-def grab(url: str, timeout=20.0) -> str:
+def get_text(url: str, timeout: float = 20.0) -> str:
+    if httpx is None:  # pragma: no cover
+        raise RuntimeError("Install with extras: pip install -e .[crawl]")
     with httpx.Client(
-        follow_redirects=True, timeout=timeout, headers={"User-Agent": "sagemtl/0.0.1"}
+        headers={"user-agent": _UA},
+        follow_redirects=True,
+        http2=True,
+        timeout=timeout,
     ) as c:
         r = c.get(url)
         r.raise_for_status()
-        return _main_text(r.text)
+        return r.text
