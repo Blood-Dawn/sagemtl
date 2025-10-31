@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
-import re, unicodedata
+
+import re
+import unicodedata
 
 _SMART = {
     "\u2018": "'",

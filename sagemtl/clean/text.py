@@ -1,5 +1,8 @@
 # Kheiven D'Haiti — cleaner
-import re, unicodedata
+from __future__ import annotations
+
+import re
+import unicodedata
 
 
 def _normalize(s: str) -> str:
