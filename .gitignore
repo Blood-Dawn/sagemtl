@@ -1,0 +1,15 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.dist/
+build/
+.env
+.venv*/
+.venv/
+# editors
+.vscode/
+.idea/
+# os cruft
+.DS_Store
+Thumbs.db
