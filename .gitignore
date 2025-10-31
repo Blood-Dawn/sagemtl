@@ -13,3 +13,6 @@ build/
 # os cruft
 .DS_Store
 Thumbs.db
+
+data/
+!.gitkeep
