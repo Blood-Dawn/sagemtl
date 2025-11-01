@@ -1,5 +1,10 @@
-﻿# Kheiven D'Haiti — package init
-from .clean.text_normalize import basic_clean, normalize_text  # noqa: F401
-from .cli import main as cli_main  # noqa: F401
+﻿# Kheiven D''Haiti — lightweight package init
+from __future__ import annotations
 
-__all__ = ["cli_main", "normalize_text", "basic_clean"]
+try:
+    from importlib.metadata import version as _v
+
+    __version__ = _v("sagemtl")
+except Exception:
+    __version__ = "0.0.0"
+__all__ = ["__version__"]

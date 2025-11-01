@@ -1,0 +1,40 @@
+﻿# Kheiven D'Haiti â€” SageMTL project config
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sagemtl"
+version = "0.0.1"
+description = "SageMTL toolchain"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+authors = [{ name = "Kheiven D'Haiti" }]
+
+[project.optional-dependencies]
+crawl = ["httpx[http2]"]
+docs = ["mkdocs","mkdocs-material","mkdocstrings[python]","pymdown-extensions"]
+
+[project.scripts]
+sagemtl = "sagemtl.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sagemtl*"]
+exclude = ["data*", "tests*"]
+
+[tool.black]
+target-version = ["py313"]
+line-length = 100
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E","F","I","UP","B","W"]
+ignore = []
+
+[tool.pytest.ini_options]
+addopts = "-q"
+

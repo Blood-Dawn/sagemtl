@@ -4,7 +4,9 @@ import sys
 
 
 def run_cli(args):
-    p = subprocess.run([sys.executable, "-m", "sagemtl", *args], capture_output=True, check=True)
+    p = subprocess.run(
+        [sys.executable, "-m", "sagemtl", *args], capture_output=True, check=True
+    )
     return p.stdout.decode()
 
 

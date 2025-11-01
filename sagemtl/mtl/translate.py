@@ -17,7 +17,9 @@ class _HF(_Base):
         from transformers import pipeline
 
         device_map = (
-            0 if (device == "cuda" or (device == "auto" and torch.cuda.is_available())) else -1
+            0
+            if (device == "cuda" or (device == "auto" and torch.cuda.is_available()))
+            else -1
         )
         self.pipe = pipeline("translation", model=model, device=device_map)
         self.device = "cuda" if device_map == 0 else "cpu"
@@ -37,7 +39,9 @@ class _CT2(_Base):
             model,
             device=(
                 "cuda"
-                if (device == "cuda" or (device == "auto" and torch.cuda.is_available()))
+                if (
+                    device == "cuda" or (device == "auto" and torch.cuda.is_available())
+                )
                 else "cpu"
             ),
         )
