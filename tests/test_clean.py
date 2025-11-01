@@ -1,4 +1,4 @@
-# Kheiven D'Haiti — tests
+# Blood-Dawn — tests
 from sagemtl.clean.text import clean_text
 
 

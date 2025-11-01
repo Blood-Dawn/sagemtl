@@ -1,4 +1,4 @@
-﻿# Kheiven D'Haiti — batch HTML extractor
+﻿# Blood-Dawn — batch HTML extractor
 from __future__ import annotations
 
 import json

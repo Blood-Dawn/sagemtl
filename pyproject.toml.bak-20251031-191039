@@ -1,4 +1,4 @@
-﻿# Kheiven D'Haiti â€” SageMTL project config
+﻿# Blood-Dawn — SageMTL project config
 [build-system]
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -10,7 +10,7 @@ description = "SageMTL toolchain"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
-authors = [{ name = "Kheiven D'Haiti" }]
+authors = [{ name = "Blood-Dawn" }]
 
 [project.optional-dependencies]
 crawl = ["httpx[http2]"]

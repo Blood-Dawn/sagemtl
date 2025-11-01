@@ -1,4 +1,4 @@
-﻿# Kheiven D'Haiti — CLI tests
+﻿# Blood-Dawn — CLI tests
 import subprocess
 import sys
 from pathlib import Path

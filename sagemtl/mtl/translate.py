@@ -1,4 +1,4 @@
-# Kheiven D'Haiti — translator backends
+# Blood-Dawn — translator backends
 from dataclasses import dataclass
 
 import torch
