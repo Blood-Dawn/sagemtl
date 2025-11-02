@@ -1,6 +1,8 @@
 """CLI tests for the Typer-based interface."""
+
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -26,11 +28,17 @@ def run_module(args: list[str], stdin: str = "") -> subprocess.CompletedProcess[
 def test_help_lists_commands():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "clean" in result.stdout
-    assert "crawl" in result.stdout
-    assert "batch" in result.stdout
-    assert "translate" in result.stdout
-    assert "gui" in result.stdout
+    for command in [
+        "clean",
+        "crawl",
+        "datasets",
+        "jobs",
+        "settings",
+        "serve",
+        "translate",
+        "gui",
+    ]:
+        assert command in result.stdout
 
 
 def test_clean_stdin_stdout():
@@ -58,9 +66,13 @@ def test_module_entrypoint(tmp_path: Path):
 def test_crawl_requires_single_source(tmp_path: Path):
     html = tmp_path / "page.html"
     html.write_text("<html><body><p>hi</p></body></html>", encoding="utf-8")
-    result = runner.invoke(app, ["crawl", "--file", str(html), "--url", "https://example.com"])
+    result = runner.invoke(
+        app, ["crawl", "--file", str(html), "--url", "https://example.com"]
+    )
     assert result.exit_code != 0
-    assert "Provide exactly one" in result.stdout or "Provide exactly one" in result.stderr
+    assert (
+        "Provide exactly one" in result.stdout or "Provide exactly one" in result.stderr
+    )
 
 
 def test_crawl_file_uses_extract(tmp_path: Path):
@@ -68,26 +80,43 @@ def test_crawl_file_uses_extract(tmp_path: Path):
     html.write_text("<html><body><main>Hi there</main></body></html>", encoding="utf-8")
     result = runner.invoke(app, ["crawl", "--file", str(html)])
     assert result.exit_code == 0
-    assert "Hi there" in result.stdout
+    data = json.loads(result.stdout)
+    assert data["blocks"][0]["text"].startswith("Hi there")
 
 
-def test_batch_stub(tmp_path: Path):
-    in_dir = tmp_path / "in"
-    out_dir = tmp_path / "out"
-    in_dir.mkdir()
-    out_dir.mkdir()
-    result = runner.invoke(app, ["batch", "--in", str(in_dir), "--out", str(out_dir), "--op", "noop"])
+def test_clean_batch_command(tmp_path: Path):
+    text_file = tmp_path / "doc.txt"
+    text_file.write_text("“Hello”", encoding="utf-8")
+    out_path = tmp_path / "clean.jsonl"
+    result = runner.invoke(
+        app, ["clean", "batch", str(text_file), "--out", str(out_path)]
+    )
     assert result.exit_code == 0
-    assert "[batch] requested op 'noop'" in result.stdout
+    assert out_path.exists()
+    lines = out_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["text"].startswith('"Hello"')
 
 
 def test_translate_stub():
-    result = runner.invoke(app, ["translate", "hello", "--src-lang", "en", "--tgt-lang", "fr", "--backend", "hf"])
+    result = runner.invoke(
+        app,
+        [
+            "translate",
+            "hello",
+            "--src-lang",
+            "en",
+            "--tgt-lang",
+            "fr",
+            "--provider",
+            "echo",
+            "--wait",
+        ],
+    )
     assert result.exit_code == 0
-    assert "translate stub" in result.stdout
-    assert "src=en" in result.stdout
-    assert "tgt=fr" in result.stdout
-    assert "backend=hf" in result.stdout
+    assert "Queued translation job" in result.stdout
+    assert "hello" in result.stdout
 
 
 @pytest.mark.parametrize("exit_code", [0, 5])

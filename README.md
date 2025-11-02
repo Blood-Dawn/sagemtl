@@ -1,11 +1,7 @@
 # sagemtl
 
-Blood-Dawn — starter repo for the SageMTL toolchain (docs, crawler, ML).
-
-## Goals
-
-- MTL pipeline experiments (crawler + cleaning + models)
-- Reproducible envs (.venv-ml, .venv-doc, .venv-crawl)
+SageMTL brings together cleaning, crawling and translation tooling behind a single
+Python CLI and optional HTTP API.
 
 ## Quickstart
 
@@ -14,44 +10,94 @@ Blood-Dawn — starter repo for the SageMTL toolchain (docs, crawler, ML).
 python -m venv .venv
 source .venv/bin/activate
 
-# install sagemtl in editable mode with its tooling extras
-pip install -e .[cli]
+# install the project with development helpers
+pip install -e .[dev]
 
-# explore the command line help and kick off a translation run
+# explore the command line help
 sagemtl --help
-sagemtl translate --input sample.txt --output translated.txt
 ```
 
-> **Note**
-> Use `python -m pip install -e .[all]` if you intend to experiment with the crawler,
-> cleaning, or model training components in a single environment.
+## Command overview
 
-## Features at a Glance
+Each pipeline has a dedicated sub-command. Pass `--help` to any command to see the
+available options.
 
-- **Interactive translation** via both CLI and TUI front-ends with shared translation logic.
-- **Batch processing** pipeline for translating multiple files or directories at once.
-- **Configurable settings** to tune model, caching, and resource usage per environment.
+### Cleaning
 
-Refer to the [documentation](docs/index.md) for deeper dives into each workflow.
+Clean single files or entire collections. The normaliser exposes toggles for smart
+quotes, dash/minus handling, blank-line collapsing and the trailing newline policy.
 
-## Interface Preview Placeholders
+```bash
+# clean a single file to stdout
+sagemtl clean --in raw.txt
 
-Real screenshots will land soon—use the notes below as a guide when producing them.
+# batch clean a directory, writing JSONL entries with text + metadata
+sagemtl clean batch data/raw --out cleaned.jsonl
+```
 
-### TUI Preview
+### Crawling
 
-> _Screenshot coming soon: capture the terminal UI showcasing live translation feedback._
+Extract structured blocks from HTML using the built-in heuristics (boilerplate
+removal, selector allow/block lists and CRLF normalisation):
 
-### CLI Preview
+```bash
+sagemtl crawl --file page.html --allow "article > p" --block ".sidebar"
+```
 
-> _Screenshot coming soon: highlight `sagemtl translate` arguments and sample output._
+### Translation queue
 
-## Batch and Translate Workflows
+Translations are queued and processed by an in-process worker. Glossaries can be
+provided as CSV term→replacement maps.
 
-The translation stack powers both interactive and automated flows:
+```bash
+sagemtl translate "Hello world" --src-lang en --tgt-lang fr --wait
+```
 
-- Use the **Translate** command group to run quick experiments from the CLI or TUI.
-- Spin up the **Batch** runner to process entire corpora with consistent settings.
+### Dataset registry
 
-Each workflow shares configuration defaults and can be tailored through the
-project-wide settings file documented under [`docs/settings.md`](docs/settings.md).
+Datasets are registered under `~/.sagemtl/data` (override with
+`SAGEMTL_DATA_DIR`).
+
+```bash
+# list known datasets
+sagemtl datasets list
+
+# add a JSONL dataset and export it as CSV
+sagemtl datasets add my-set samples.jsonl
+sagemtl datasets export my-set --format csv --out export.csv
+```
+
+### Job management
+
+Translation jobs are persisted to `~/.sagemtl/jobs.json`. Inspect them via the
+`jobs` sub-commands.
+
+```bash
+sagemtl jobs list
+sagemtl jobs tail <job-id>
+sagemtl jobs purge
+```
+
+### Settings
+
+Configuration lives in `~/.sagemtl/config.toml`. The CLI can show or edit values:
+
+```bash
+sagemtl settings show
+sagemtl settings set newline_mode "\"crlf\""
+```
+
+### HTTP bridge
+
+Start a FastAPI server that mirrors the CLI functionality:
+
+```bash
+# requires uvicorn to be installed in the environment
+sagemtl serve --host 127.0.0.1 --port 8000
+
+# or run via uvicorn directly
+uvicorn sagemtl.serve.api:app
+```
+
+The API enables cross-origin requests from `http://localhost:5173` for UI
+development.

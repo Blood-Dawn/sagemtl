@@ -60,4 +60,3 @@ class SettingsController:
 
     def iter_listeners(self) -> Iterable[Listener]:
         return tuple(self._listeners)
-

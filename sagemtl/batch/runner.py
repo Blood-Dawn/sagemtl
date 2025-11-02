@@ -1,4 +1,5 @@
 """Threaded batch runner with deduplication and JSONL streaming."""
+
 from __future__ import annotations
 
 import hashlib
@@ -63,7 +64,11 @@ class BatchRunner:
 
     def _run(self) -> Iterator[dict[str, Any]]:
         executor = ThreadPoolExecutor(max_workers=self._workers)
-        fh = self._out_path.open("w", encoding="utf-8", newline="\n") if self._out_path else None
+        fh = (
+            self._out_path.open("w", encoding="utf-8", newline="\n")
+            if self._out_path
+            else None
+        )
         pending_sources: dict[str, list[str]] = {}
         futures: dict[Future[str], str] = {}
         seen: dict[str, str] = {}

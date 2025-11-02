@@ -1,4 +1,5 @@
 """Tests for the threaded batch runner."""
+
 from __future__ import annotations
 
 import json

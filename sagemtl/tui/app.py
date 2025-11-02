@@ -1,4 +1,5 @@
 """Textual TUI application for SageMTL workflows."""
+
 from __future__ import annotations
 
 from typing import ClassVar
@@ -29,7 +30,9 @@ from sagemtl.crawl import extract_main_text
 class SageMTLApp(App[None]):
     """Main Textual application for SageMTL."""
 
-    CSS: ClassVar[str] = """
+    CSS: ClassVar[
+        str
+    ] = """
     Screen {
         layout: vertical;
         background: $surface;
@@ -219,10 +222,15 @@ class SageMTLApp(App[None]):
                     with TabPane("Translate", id="tab-translate"):
                         with Vertical(classes="tool-section"):
                             yield Label("Translation workflows are under construction.")
-                            yield Label("Check the roadmap for upcoming models.", classes="dimmed")
+                            yield Label(
+                                "Check the roadmap for upcoming models.",
+                                classes="dimmed",
+                            )
                     with TabPane("Settings", id="tab-settings"):
                         with Vertical(classes="tool-section"):
-                            yield Label("Configure API keys, storage paths, and preferences.")
+                            yield Label(
+                                "Configure API keys, storage paths, and preferences."
+                            )
                             yield Label(
                                 "Configuration storage is not yet implemented in this build.",
                                 classes="dimmed",
@@ -302,7 +310,10 @@ class SageMTLApp(App[None]):
         tabs.active = tab_id
         nav = self.query_one("#nav", ListView)
         for index, item in enumerate(nav.children):
-            if isinstance(item, ListItem) and self._nav_map.get(item.id or "") == tab_id:
+            if (
+                isinstance(item, ListItem)
+                and self._nav_map.get(item.id or "") == tab_id
+            ):
                 nav.index = index
                 break
         self.update_status(f"Switched to {tab_id.removeprefix('tab-').title()} tab.")
@@ -324,11 +335,15 @@ class SageMTLApp(App[None]):
         tab_id = event.tab.id
         nav = self.query_one("#nav", ListView)
         for index, item in enumerate(nav.children):
-            if isinstance(item, ListItem) and self._nav_map.get(item.id or "") == tab_id:
+            if (
+                isinstance(item, ListItem)
+                and self._nav_map.get(item.id or "") == tab_id
+            ):
                 nav.index = index
                 break
 
     async def on_key(self, event: events.Key) -> None:  # pragma: no cover - runtime UX
         if event.key == "f1":
-            self.log_event("Visit https://github.com/blood-dawn/sagemtl for documentation.")
-
+            self.log_event(
+                "Visit https://github.com/blood-dawn/sagemtl for documentation."
+            )

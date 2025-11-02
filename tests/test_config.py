@@ -51,7 +51,7 @@ def test_save_and_reload(tmp_path: Path):
     assert loaded == settings
 
     text = cfg_path.read_text(encoding="utf-8")
-    assert "clean_input_path = \"input.txt\"" in text
+    assert 'clean_input_path = "input.txt"' in text
     assert "thread_count = 12" in text
 
 
@@ -72,7 +72,7 @@ def test_update_config(tmp_path: Path):
 
 def test_invalid_config_is_sanitized(tmp_path: Path):
     cfg = tmp_path / "conf.toml"
-    cfg.write_text("thread_count = -4\nnewline_mode = \"bogus\"\n", encoding="utf-8")
+    cfg.write_text('thread_count = -4\nnewline_mode = "bogus"\n', encoding="utf-8")
     clear_config_cache()
     settings = load_config(cfg, use_cache=False)
     assert settings.thread_count >= 1
@@ -85,5 +85,4 @@ def test_save_config_respects_env_override(tmp_path: Path, monkeypatch):
     clear_config_cache()
     save_config(Settings(clean_input_path="foo.txt"))
     data = cfg.read_text(encoding="utf-8")
-    assert "clean_input_path = \"foo.txt\"" in data
-
+    assert 'clean_input_path = "foo.txt"' in data

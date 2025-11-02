@@ -1,4 +1,5 @@
 ﻿# Kheiven D\'Haiti — CLI crawl test (local file)
+import json
 import subprocess
 import sys
 
@@ -16,4 +17,7 @@ def test_cli_crawl_file(tmp_path):
     html_file = tmp_path / "sample.html"
     html_file.write_text(SAMPLE_HTML, encoding="utf-8")
     out = run_cli(["crawl", "--file", str(html_file)])
-    assert 'Hello world-smart "quotes"!' in out
+    payload = json.loads(out)
+    assert any(
+        'Hello world-smart "quotes"!' in block["text"] for block in payload["blocks"]
+    )
