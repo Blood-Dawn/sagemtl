@@ -1,110 +1,153 @@
 ﻿# Blood-Dawn — sagemtl CLI
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
+from typing import Annotated, Optional
+from urllib.request import urlopen
+
+import typer
 
 from sagemtl.clean.text_normalize import normalize_text
 from sagemtl.config import load_config
 from sagemtl.crawl.extract import extract_main_text
 
+app = typer.Typer(help="SageMTL utilities")
 
-def _read_text(path: str | None) -> str:
+
+def _read_text(path: Optional[str]) -> str:
     if path and path != "-":
         return Path(path).read_text(encoding="utf-8", errors="ignore")
-    # Read raw bytes from stdin and decode as UTF-8 to avoid mojibake on Windows
-    data = sys.stdin.buffer.read()
+    # Read raw bytes from stdin and decode as UTF-8 to avoid mojibake on Windows.
+    stream = getattr(sys.stdin, "buffer", sys.stdin)
+    data = stream.read()
+    if isinstance(data, str):
+        return data
     return data.decode("utf-8", errors="ignore")
 
 
-def _write_text(s: str, out_path: str | None, newline: str | None) -> None:
+def _write_text(text: str, out_path: Optional[Path | str]) -> None:
     if out_path:
-        Path(out_path).write_text(s, encoding="utf-8", newline=newline)
-    else:
-        sys.stdout.buffer.write(s.encode("utf-8"))
+        Path(out_path).write_text(text, encoding="utf-8", newline="\n")
+        return
+    stream = getattr(sys.stdout, "buffer", sys.stdout)
+    try:
+        stream.write(text)  # type: ignore[arg-type]
+    except TypeError:
+        stream.write(text.encode("utf-8"))
 
 
-def _cmd_clean(inp: str, out: str | None, newline: str | None) -> int:
+@app.command(help="Normalize text from stdin or a file")
+def clean(
+    inp: Annotated[str, typer.Option("--in", "-i", help="Input path or '-' for stdin")] = "-",
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output path (default: stdout)")] = None,
+) -> None:
     src = _read_text(inp)
     out_text = normalize_text(src)
     if not out_text.endswith("\n"):
         out_text += "\n"
-    _write_text(out_text, out, newline)
-    return 0
+    _write_text(out_text, out)
 
 
-def _cmd_crawl_file(file: str, out: str | None, newline: str | None) -> int:
-    html = Path(file).read_text(encoding="utf-8", errors="ignore")
+@app.command(help="Extract text from HTML provided as a file or fetched from a URL")
+def crawl(
+    url: Annotated[Optional[str], typer.Option("--url", help="HTTP(S) URL to crawl")]=None,
+    file: Annotated[Optional[Path], typer.Option("--file", help="HTML file path")]=None,
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output path (default: stdout)")] = None,
+) -> None:
+    if bool(url) == bool(file):
+        raise typer.BadParameter("Provide exactly one of --url or --file.")
+
+    if file is not None:
+        html = file.read_text(encoding="utf-8", errors="ignore")
+    else:
+        assert url is not None
+        with urlopen(url) as response:  # type: ignore[arg-type]
+            data = response.read()
+            charset = response.headers.get_content_charset() or "utf-8"
+        html = data.decode(charset, errors="ignore")
+
     text = extract_main_text(html)
-    _write_text(text, out, newline)
+    _write_text(text, out)
+
+
+@app.command(help="Run a batch operation across a directory of inputs")
+def batch(
+    in_dir: Annotated[Path, typer.Option("--in", "-i", exists=True, file_okay=False, readable=True, resolve_path=True, help="Input directory")],
+    out_dir: Annotated[Path, typer.Option("--out", "-o", file_okay=False, resolve_path=True, help="Output directory")],
+    op: Annotated[str, typer.Option("--op", help="Batch operation to run (e.g. crawl)")] = "crawl",
+    glob: Annotated[str, typer.Option("--glob", help="Glob pattern for selecting inputs")] = "*.html",
+    jsonl: Annotated[
+        bool,
+        typer.Option(
+            "--jsonl/--no-jsonl",
+            help="Also write texts.jsonl",
+            show_default=False,
+        ),
+    ] = False,
+) -> None:
+    operation = op.lower()
+    if operation == "crawl":
+        from sagemtl.crawl.batch import process_dir
+
+        stats = process_dir(str(in_dir), str(out_dir), glob, jsonl)
+        typer.echo(f"Wrote {stats['processed']} files to {stats['outdir']}")
+        return
+
+    typer.echo(
+        f"[batch] requested op '{op}' with inputs from {in_dir} to {out_dir}"
+    )
+
+
+@app.command(help="Stub translation command that logs provided parameters")
+def translate(
+    text: Annotated[str, typer.Argument(help="Text to translate")],
+    src_lang: Annotated[str, typer.Option("--src-lang", help="Source language code")] = "en",
+    tgt_lang: Annotated[str, typer.Option("--tgt-lang", help="Target language code")] = "fr",
+    backend: Annotated[Optional[str], typer.Option("--backend", help="Translation backend override")]=None,
+) -> None:
+    backend_name = backend or "auto"
+    typer.echo(
+        f"translate stub | src={src_lang} tgt={tgt_lang} backend={backend_name} text={text}"
+    )
+
+
+def _launch_gui() -> int:
+    try:
+        from textual.app import App, ComposeResult
+        from textual.widgets import Static
+    except ModuleNotFoundError:
+        typer.secho(
+            "Textual is required for the GUI. Install textual>=0.44 to use this command.",
+            err=True,
+            fg=typer.colors.RED,
+        )
+        return 1
+
+    class SageMTLApp(App):
+        TITLE = "SageMTL"
+
+        def compose(self) -> ComposeResult:  # type: ignore[override]
+            yield Static("SageMTL GUI stub")
+
+        def on_mount(self) -> None:  # type: ignore[override]
+            self.exit(message="SageMTL GUI closed")
+
+    typer.echo("Launching SageMTL Textual GUI...")
+    SageMTLApp().run()
     return 0
 
 
-def _cmd_crawl_batch(indir: str, glob: str, outdir: str, jsonl: bool) -> int:
-    from sagemtl.crawl.batch import process_dir
+@app.command(help="Launch the Textual-based SageMTL GUI")
+def gui() -> None:
+    exit_code = _launch_gui()
+    if exit_code != 0:
+        raise typer.Exit(exit_code)
 
-    stats = process_dir(indir, outdir, glob, jsonl)
-    sys.stdout.write(f"Wrote {stats['processed']} files to {stats['outdir']}\n")
-    return 0
 
-
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="sagemtl", description="SageMTL utilities")
-    sub = p.add_subparsers(dest="cmd", required=True)
-
-    cfg = load_config()
-
-    p_clean = sub.add_parser("clean", help="normalize text (stdin or file)")
-    p_clean.add_argument(
-        "--in",
-        dest="inp",
-        default=cfg.clean_input_path,
-        help="input path or '-' for stdin",
-    )
-    p_clean.add_argument(
-        "--out",
-        dest="out",
-        default=cfg.clean_output_path,
-        help="output path (default: stdout)",
-    )
-
-    p_crawl = sub.add_parser("crawl", help="extract text from a single HTML file")
-    p_crawl.add_argument("--file", required=True, help="HTML file path")
-    p_crawl.add_argument(
-        "--out",
-        default=cfg.clean_output_path,
-        help="output path (default: stdout)",
-    )
-
-    p_batch = sub.add_parser("crawl-batch", help="extract text for many HTML files")
-    p_batch.add_argument("--indir", required=True, help="directory of HTML files")
-    p_batch.add_argument(
-        "--glob",
-        default=cfg.crawl_glob,
-        help="pattern (e.g., *.html or **\\*.html)",
-    )
-    p_batch.add_argument(
-        "--outdir",
-        default=cfg.crawl_outdir,
-        help="where to write .txt (and JSONL)",
-    )
-    p_batch.add_argument(
-        "--jsonl",
-        action="store_true",
-        default=cfg.crawl_jsonl,
-        help="also write texts.jsonl",
-    )
-
-    args = p.parse_args(argv)
-    if args.cmd == "clean":
-        return _cmd_clean(args.inp, args.out, cfg.newline)
-    if args.cmd == "crawl":
-        return _cmd_crawl_file(args.file, args.out, cfg.newline)
-    if args.cmd == "crawl-batch":
-        return _cmd_crawl_batch(args.indir, args.glob, args.outdir, args.jsonl)
-    return 1
+def main() -> None:
+    app()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

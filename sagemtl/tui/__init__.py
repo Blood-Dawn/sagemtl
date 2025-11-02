@@ -1,6 +1,11 @@
-"""Textual user interface helpers."""
+"""Textual application entry points for SageMTL."""
+from __future__ import annotations
 
-from .settings import SettingsController
+from .app import SageMTLApp
 
-__all__ = ["SettingsController"]
+__all__ = ["SageMTLApp", "run"]
 
+
+def run() -> None:
+    """Launch the SageMTL Textual user interface."""
+    SageMTLApp().run()
