@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import csv
+from dataclasses import dataclass, field
+from functools import partial
 import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, Sequence
@@ -60,9 +61,11 @@ def _load_jsonl(path: Path) -> Iterable[tuple[str, Dict[str, Any]]]:
             yield source, meta | {"text": text}
 
 
-def _load_csv(path: Path) -> Iterable[tuple[str, Dict[str, Any]]]:
+def _load_csv(
+    path: Path, *, delimiter: str = ","
+) -> Iterable[tuple[str, Dict[str, Any]]]:
     with path.open("r", encoding="utf-8", newline="") as fh:
-        reader = csv.DictReader(fh)
+        reader = csv.DictReader(fh, delimiter=delimiter)
         for row in reader:
             if "text" not in row:
                 raise ValueError("CSV input must contain a 'text' column")
@@ -96,7 +99,8 @@ def iter_clean_batch(
         elif path.suffix.lower() == ".jsonl":
             loader = _load_jsonl
         elif path.suffix.lower() in {".csv", ".tsv"}:
-            loader = _load_csv
+            delimiter = "\t" if path.suffix.lower() == ".tsv" else ","
+            loader = partial(_load_csv, delimiter=delimiter)
         else:
             loader = None
 
