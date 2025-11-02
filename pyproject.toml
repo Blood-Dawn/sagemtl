@@ -19,6 +19,16 @@ exclude = ["data*", "tests*"]
 [project.optional-dependencies]
 crawl = ["beautifulsoup4>=4.12", "lxml>=5.3", "selectolax>=0.3.21", "httpx[http2]>=0.25"]
 docs  = ["mkdocs", "mkdocs-material", "mkdocstrings[python]", "pymdown-extensions"]
+dev = [
+    "beautifulsoup4>=4.12",
+    "black>=24.3.0",
+    "httpx[http2]>=0.25",
+    "lxml>=5.3",
+    "pre-commit>=3.6.0",
+    "pytest>=8.2.0",
+    "ruff>=0.4.0",
+    "selectolax>=0.3.21",
+]
 
 [project.scripts]
 sagemtl = "sagemtl.cli:main"

@@ -31,10 +31,11 @@ class _HF(_Base):
 
 class _CT2(_Base):
     def __init__(self, model: str, device: str):
-        import ctranslate2
-        import sentencepiece as spm
         from pathlib import Path
         from typing import Any
+
+        import ctranslate2
+        import sentencepiece as spm
 
         # model is a directory path exported for CTranslate2
         self.translator = ctranslate2.Translator(

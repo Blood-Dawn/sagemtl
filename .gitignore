@@ -16,6 +16,7 @@ dist/
 Thumbs.db
 
 data/
+!/tests/data/
 !.gitkeep
 !tests/data/
 !tests/data/**
