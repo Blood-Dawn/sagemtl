@@ -1,4 +1,5 @@
 """Test configuration to ensure the package root is importable."""
+
 from __future__ import annotations
 
 import sys

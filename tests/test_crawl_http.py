@@ -70,4 +70,3 @@ def test_cache_prevents_repeat_requests(tmp_path):
 
     assert first == second == "cached"
     assert calls["/cache-me"] == 1
-

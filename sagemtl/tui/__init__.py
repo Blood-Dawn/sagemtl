@@ -1,4 +1,5 @@
 """Textual application entry points for SageMTL."""
+
 from __future__ import annotations
 
 from .app import SageMTLApp

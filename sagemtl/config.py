@@ -208,4 +208,3 @@ def clear_config_cache() -> None:
     global _CONFIG_CACHE, _CONFIG_CACHE_PATH
     _CONFIG_CACHE = None
     _CONFIG_CACHE_PATH = None
-

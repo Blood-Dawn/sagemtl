@@ -1,24 +1,39 @@
-﻿# Blood-Dawn — sagemtl CLI
+"""Typer-based CLI exposing cleaning, crawling, translation and admin tasks."""
+
 from __future__ import annotations
 
+import json
 import sys
+import time
 from pathlib import Path
 from typing import Annotated, Optional
-from urllib.request import urlopen
 
 import typer
 
-from sagemtl.clean.text_normalize import normalize_text
-from sagemtl.config import load_config
-from sagemtl.crawl.extract import extract_main_text
+from sagemtl.clean.pipeline import iter_clean_batch
+from sagemtl.clean.text import CleanOptions, clean_text_with_meta
+from sagemtl.clean.text_normalize import NormalizeOptions
+from sagemtl.config import load_config, save_config, update_config
+from sagemtl.crawl.http import fetch_text
+from sagemtl.crawl.pipeline import CrawlOptions, crawl_html
+from sagemtl.datasets.registry import DatasetFormat, get_dataset_registry
+from sagemtl.jobs.store import get_job_store
+from sagemtl.translate import TranslationRequest, get_translation_queue
 
-app = typer.Typer(help="SageMTL utilities")
+app = typer.Typer(help="SageMTL utilities", no_args_is_help=True)
+clean_app = typer.Typer(help="Clean text sources", invoke_without_command=True)
+datasets_app = typer.Typer(help="Manage local datasets")
+jobs_app = typer.Typer(help="Inspect translation jobs")
+settings_app = typer.Typer(help="View and edit configuration")
+app.add_typer(clean_app, name="clean")
+app.add_typer(datasets_app, name="datasets")
+app.add_typer(jobs_app, name="jobs")
+app.add_typer(settings_app, name="settings")
 
 
 def _read_text(path: Optional[str]) -> str:
     if path and path != "-":
         return Path(path).read_text(encoding="utf-8", errors="ignore")
-    # Read raw bytes from stdin and decode as UTF-8 to avoid mojibake on Windows.
     stream = getattr(sys.stdin, "buffer", sys.stdin)
     data = stream.read()
     if isinstance(data, str):
@@ -27,7 +42,7 @@ def _read_text(path: Optional[str]) -> str:
 
 
 def _write_text(text: str, out_path: Optional[Path | str]) -> None:
-    if out_path:
+    if out_path and out_path != Path("-"):
         Path(out_path).write_text(text, encoding="utf-8", newline="\n")
         return
     stream = getattr(sys.stdout, "buffer", sys.stdout)
@@ -37,79 +52,369 @@ def _write_text(text: str, out_path: Optional[Path | str]) -> None:
         stream.write(text.encode("utf-8"))
 
 
-@app.command(help="Normalize text from stdin or a file")
-def clean(
-    inp: Annotated[str, typer.Option("--in", "-i", help="Input path or '-' for stdin")] = "-",
-    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output path (default: stdout)")] = None,
+def _normalize_options(
+    *,
+    smart_quotes: bool,
+    em_dash: bool,
+    minus_sign: bool,
+    zero_width: bool,
+    nbsp_to_space: bool,
+    collapse_blank_lines: bool,
+    ensure_trailing_lf: bool,
+) -> NormalizeOptions:
+    return NormalizeOptions(
+        smart_quotes=smart_quotes,
+        em_dash=em_dash,
+        minus_sign=minus_sign,
+        zero_width=zero_width,
+        nbsp_to_space=nbsp_to_space,
+        collapse_blank_lines=collapse_blank_lines,
+        ensure_trailing_lf=ensure_trailing_lf,
+    )
+
+
+def clean_run(
+    inp: Annotated[
+        str, typer.Option("--in", "-i", help="Input path or '-' for stdin")
+    ] = "-",
+    out: Annotated[
+        Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")
+    ] = None,
+    smart_quotes: Annotated[
+        bool, typer.Option("--smart-quotes/--no-smart-quotes")
+    ] = True,
+    em_dash: Annotated[bool, typer.Option("--em-dash/--no-em-dash")] = True,
+    minus_sign: Annotated[bool, typer.Option("--minus/--no-minus")] = True,
+    zero_width: Annotated[bool, typer.Option("--zero-width/--keep-zero-width")] = True,
+    nbsp_to_space: Annotated[bool, typer.Option("--nbsp/--keep-nbsp")] = True,
+    collapse_blank_lines: Annotated[
+        bool,
+        typer.Option("--collapse-blank-lines/--keep-blank-lines"),
+    ] = True,
+    ensure_trailing_lf: Annotated[
+        bool,
+        typer.Option("--ensure-trailing-lf/--no-ensure-trailing-lf"),
+    ] = True,
 ) -> None:
+    options = _normalize_options(
+        smart_quotes=smart_quotes,
+        em_dash=em_dash,
+        minus_sign=minus_sign,
+        zero_width=zero_width,
+        nbsp_to_space=nbsp_to_space,
+        collapse_blank_lines=collapse_blank_lines,
+        ensure_trailing_lf=ensure_trailing_lf,
+    )
     src = _read_text(inp)
-    out_text = normalize_text(src)
-    if not out_text.endswith("\n"):
-        out_text += "\n"
-    _write_text(out_text, out)
+    result = clean_text_with_meta(src, options=CleanOptions(normalize=options))
+    _write_text(result.text, out)
 
 
-@app.command(help="Extract text from HTML provided as a file or fetched from a URL")
+@clean_app.callback()
+def clean_callback(
+    ctx: typer.Context,
+    inp: Annotated[
+        str, typer.Option("--in", "-i", help="Input path or '-' for stdin")
+    ] = "-",
+    out: Annotated[
+        Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")
+    ] = None,
+    smart_quotes: Annotated[
+        bool, typer.Option("--smart-quotes/--no-smart-quotes")
+    ] = True,
+    em_dash: Annotated[bool, typer.Option("--em-dash/--no-em-dash")] = True,
+    minus_sign: Annotated[bool, typer.Option("--minus/--no-minus")] = True,
+    zero_width: Annotated[bool, typer.Option("--zero-width/--keep-zero-width")] = True,
+    nbsp_to_space: Annotated[bool, typer.Option("--nbsp/--keep-nbsp")] = True,
+    collapse_blank_lines: Annotated[
+        bool,
+        typer.Option("--collapse-blank-lines/--keep-blank-lines"),
+    ] = True,
+    ensure_trailing_lf: Annotated[
+        bool,
+        typer.Option("--ensure-trailing-lf/--no-ensure-trailing-lf"),
+    ] = True,
+) -> None:
+    if ctx.invoked_subcommand is None:
+        clean_run(
+            inp=inp,
+            out=out,
+            smart_quotes=smart_quotes,
+            em_dash=em_dash,
+            minus_sign=minus_sign,
+            zero_width=zero_width,
+            nbsp_to_space=nbsp_to_space,
+            collapse_blank_lines=collapse_blank_lines,
+            ensure_trailing_lf=ensure_trailing_lf,
+        )
+
+
+@clean_app.command("run", help="Clean a single text input")
+def clean_command(**kwargs) -> None:  # type: ignore[no-untyped-def]
+    clean_run(**kwargs)  # type: ignore[arg-type]
+
+
+@clean_app.command("batch", help="Batch clean inputs and emit JSONL")
+def clean_batch(
+    inputs: Annotated[
+        list[Path],
+        typer.Argument(help="Input files/directories", exists=True, resolve_path=True),
+    ],
+    out: Annotated[
+        Path, typer.Option("--out", "-o", help="Output JSONL", resolve_path=True)
+    ] = Path("clean.jsonl"),
+    smart_quotes: Annotated[
+        bool, typer.Option("--smart-quotes/--no-smart-quotes")
+    ] = True,
+    em_dash: Annotated[bool, typer.Option("--em-dash/--no-em-dash")] = True,
+    minus_sign: Annotated[bool, typer.Option("--minus/--no-minus")] = True,
+    zero_width: Annotated[bool, typer.Option("--zero-width/--keep-zero-width")] = True,
+    nbsp_to_space: Annotated[bool, typer.Option("--nbsp/--keep-nbsp")] = True,
+    collapse_blank_lines: Annotated[
+        bool,
+        typer.Option("--collapse-blank-lines/--keep-blank-lines"),
+    ] = True,
+    ensure_trailing_lf: Annotated[
+        bool,
+        typer.Option("--ensure-trailing-lf/--no-ensure-trailing-lf"),
+    ] = True,
+) -> None:
+    options = _normalize_options(
+        smart_quotes=smart_quotes,
+        em_dash=em_dash,
+        minus_sign=minus_sign,
+        zero_width=zero_width,
+        nbsp_to_space=nbsp_to_space,
+        collapse_blank_lines=collapse_blank_lines,
+        ensure_trailing_lf=ensure_trailing_lf,
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8", newline="\n") as fh:
+        for result in iter_clean_batch(inputs, options=CleanOptions(normalize=options)):
+            fh.write(
+                json.dumps(
+                    {"text": result.text, "meta": result.meta}, ensure_ascii=False
+                )
+                + "\n"
+            )
+    typer.echo(f"Wrote {out}")
+
+
+@app.command(help="Extract structured text blocks from HTML")
 def crawl(
-    url: Annotated[Optional[str], typer.Option("--url", help="HTTP(S) URL to crawl")]=None,
-    file: Annotated[Optional[Path], typer.Option("--file", help="HTML file path")]=None,
-    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output path (default: stdout)")] = None,
+    url: Annotated[
+        Optional[str], typer.Option("--url", help="HTTP(S) URL to crawl")
+    ] = None,
+    file: Annotated[
+        Optional[Path],
+        typer.Option("--file", help="HTML file path", exists=True, resolve_path=True),
+    ] = None,
+    depth: Annotated[
+        int, typer.Option(help="Link depth (currently informational)")
+    ] = 0,
+    render_js: Annotated[bool, typer.Option("--render-js/--no-render-js")] = False,
+    allow_selector: Annotated[
+        list[str],
+        typer.Option("--allow", help="CSS selector allow-list", show_default=False),
+    ] = [],
+    block_selector: Annotated[
+        list[str],
+        typer.Option("--block", help="CSS selector block-list", show_default=False),
+    ] = [],
+    out: Annotated[
+        Optional[Path], typer.Option("--out", "-o", help="Output JSON path")
+    ] = None,
 ) -> None:
     if bool(url) == bool(file):
         raise typer.BadParameter("Provide exactly one of --url or --file.")
-
-    if file is not None:
-        html = file.read_text(encoding="utf-8", errors="ignore")
+    if url:
+        html = fetch_text(url)
+        source = url
     else:
-        assert url is not None
-        with urlopen(url) as response:  # type: ignore[arg-type]
-            data = response.read()
-            charset = response.headers.get_content_charset() or "utf-8"
-        html = data.decode(charset, errors="ignore")
-
-    text = extract_main_text(html)
-    _write_text(text, out)
-
-
-@app.command(help="Run a batch operation across a directory of inputs")
-def batch(
-    in_dir: Annotated[Path, typer.Option("--in", "-i", exists=True, file_okay=False, readable=True, resolve_path=True, help="Input directory")],
-    out_dir: Annotated[Path, typer.Option("--out", "-o", file_okay=False, resolve_path=True, help="Output directory")],
-    op: Annotated[str, typer.Option("--op", help="Batch operation to run (e.g. crawl)")] = "crawl",
-    glob: Annotated[str, typer.Option("--glob", help="Glob pattern for selecting inputs")] = "*.html",
-    jsonl: Annotated[
-        bool,
-        typer.Option(
-            "--jsonl/--no-jsonl",
-            help="Also write texts.jsonl",
-            show_default=False,
-        ),
-    ] = False,
-) -> None:
-    operation = op.lower()
-    if operation == "crawl":
-        from sagemtl.crawl.batch import process_dir
-
-        stats = process_dir(str(in_dir), str(out_dir), glob, jsonl)
-        typer.echo(f"Wrote {stats['processed']} files to {stats['outdir']}")
-        return
-
-    typer.echo(
-        f"[batch] requested op '{op}' with inputs from {in_dir} to {out_dir}"
+        assert file is not None
+        html = file.read_text(encoding="utf-8", errors="ignore")
+        source = str(file)
+    options = CrawlOptions(
+        depth=depth,
+        render_js=render_js,
+        allow_selectors=allow_selector,
+        block_selectors=block_selector,
+        normalize=NormalizeOptions(ensure_trailing_lf=False),
     )
+    result = crawl_html(html, source=source, options=options)
+    payload = {
+        "source": source,
+        "meta": result.meta,
+        "blocks": [
+            {
+                "order": block.order,
+                "text": block.text,
+                "css_path": block.css_path,
+                "xpath": block.xpath,
+                "lang": block.lang,
+            }
+            for block in result.blocks
+        ],
+    }
+    data = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    _write_text(data, out)
 
 
-@app.command(help="Stub translation command that logs provided parameters")
+@app.command(help="Queue a translation job (stub implementation)")
 def translate(
     text: Annotated[str, typer.Argument(help="Text to translate")],
-    src_lang: Annotated[str, typer.Option("--src-lang", help="Source language code")] = "en",
-    tgt_lang: Annotated[str, typer.Option("--tgt-lang", help="Target language code")] = "fr",
-    backend: Annotated[Optional[str], typer.Option("--backend", help="Translation backend override")]=None,
+    src_lang: Annotated[
+        str, typer.Option("--src-lang", help="Source language code")
+    ] = "en",
+    tgt_lang: Annotated[
+        str, typer.Option("--tgt-lang", help="Target language code")
+    ] = "fr",
+    provider: Annotated[
+        Optional[str], typer.Option("--provider", help="Translation backend override")
+    ] = None,
+    glossary: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--glossary",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            resolve_path=True,
+            help="Glossary CSV",
+        ),
+    ] = None,
+    wait: Annotated[
+        bool, typer.Option("--wait/--no-wait", help="Wait for completion")
+    ] = False,
 ) -> None:
-    backend_name = backend or "auto"
-    typer.echo(
-        f"translate stub | src={src_lang} tgt={tgt_lang} backend={backend_name} text={text}"
+    queue = get_translation_queue()
+    request = TranslationRequest(
+        text=text,
+        src_lang=src_lang,
+        tgt_lang=tgt_lang,
+        provider_name=provider,
+        glossary_path=str(glossary) if glossary else None,
+        meta={},
     )
+    job = queue.enqueue(request)
+    typer.echo(f"Queued translation job {job.id} ({job.status})")
+    if wait:
+        typer.echo("Waiting for completion...")
+        while True:
+            current = queue.get_job(job.id)
+            if current and current.status.lower() not in {"queued", "running"}:
+                break
+            time.sleep(0.1)
+        if current is None:
+            raise typer.Exit(code=1)
+        if current.status.lower() == "done" and current.result:
+            typer.echo(current.result.get("text", ""))
+        else:
+            typer.echo(f"Job failed: {current.error}", err=True)
+            raise typer.Exit(code=1)
+
+
+@datasets_app.command("list", help="List registered datasets")
+def datasets_list() -> None:
+    registry = get_dataset_registry()
+    for record in registry.list():
+        typer.echo(f"{record.name}\t{record.format}\t{record.filename}")
+
+
+@datasets_app.command("add", help="Register a dataset file")
+def datasets_add(
+    name: Annotated[str, typer.Argument(help="Dataset name")],
+    path: Annotated[
+        Path, typer.Argument(help="Dataset file", exists=True, resolve_path=True)
+    ],
+    fmt: Annotated[
+        Optional[DatasetFormat], typer.Option("--format", help="Input format override")
+    ] = None,
+) -> None:
+    registry = get_dataset_registry()
+    record = registry.add(name, path, fmt=fmt)
+    typer.echo(f"Registered {record.name} ({record.format}) -> {record.filename}")
+
+
+@datasets_app.command("export", help="Export a dataset in a given format")
+def datasets_export(
+    name: Annotated[str, typer.Argument(help="Dataset name")],
+    fmt: Annotated[DatasetFormat, typer.Option("--format", "-f")],
+    out: Annotated[Path, typer.Option("--out", "-o", resolve_path=True)],
+) -> None:
+    registry = get_dataset_registry()
+    registry.export(name, fmt, out)
+    typer.echo(f"Wrote {out}")
+
+
+@jobs_app.command("list", help="List known jobs")
+def jobs_list() -> None:
+    store = get_job_store()
+    for job in store.list():
+        typer.echo(f"{job.id}\t{job.type}\t{job.status}")
+
+
+@jobs_app.command("tail", help="Show job logs and result")
+def jobs_tail(job_id: Annotated[str, typer.Argument(help="Job identifier")]) -> None:
+    store = get_job_store()
+    job = store.get(job_id)
+    if not job:
+        raise typer.BadParameter(f"Unknown job {job_id}")
+    if job.log:
+        for line in job.log:
+            typer.echo(line)
+    typer.echo(f"Status: {job.status}")
+    if job.result:
+        typer.echo(json.dumps(job.result, ensure_ascii=False, indent=2))
+    if job.error:
+        typer.echo(f"Error: {job.error}", err=True)
+
+
+@jobs_app.command("purge", help="Remove completed jobs")
+def jobs_purge(
+    keep_running: Annotated[
+        bool,
+        typer.Option("--keep-running/--purge-running", help="Keep queued/running jobs"),
+    ] = True,
+) -> None:
+    store = get_job_store()
+    statuses = {"queued", "running"} if keep_running else set()
+    removed = store.purge(statuses=statuses)
+    typer.echo(f"Removed {len(removed)} jobs")
+
+
+@settings_app.command("show", help="Show current configuration")
+def settings_show() -> None:
+    config = load_config()
+    typer.echo(json.dumps(config.model_dump(), ensure_ascii=False, indent=2))
+
+
+@settings_app.command("set", help="Update a configuration value")
+def settings_set(
+    key: Annotated[str, typer.Argument(help="Setting key")],
+    value: Annotated[str, typer.Argument(help="JSON-serialisable value")],
+) -> None:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        parsed = value
+    new_settings = update_config({key: parsed})
+    save_config(new_settings)
+    typer.echo(f"Updated {key}")
+
+
+@app.command(help="Launch the FastAPI service")
+def serve(
+    host: Annotated[str, typer.Option("--host", help="Bind address")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="TCP port")] = 8000,
+) -> None:
+    try:
+        import uvicorn
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+        raise typer.BadParameter(
+            "uvicorn is required to use the serve command"
+        ) from exc
+    uvicorn.run("sagemtl.serve.api:app", host=host, port=port)
 
 
 def _launch_gui() -> int:
@@ -130,16 +435,13 @@ def _launch_gui() -> int:
         def compose(self) -> ComposeResult:  # type: ignore[override]
             yield Static("SageMTL GUI stub")
 
-        def on_mount(self) -> None:  # type: ignore[override]
-            self.exit(message="SageMTL GUI closed")
-
-    typer.echo("Launching SageMTL Textual GUI...")
     SageMTLApp().run()
     return 0
 
 
 @app.command(help="Launch the Textual-based SageMTL GUI")
 def gui() -> None:
+    typer.echo("Launching SageMTL Textual GUI...")
     exit_code = _launch_gui()
     if exit_code != 0:
         raise typer.Exit(exit_code)

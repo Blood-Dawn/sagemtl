@@ -115,7 +115,9 @@ class HTTPClient:
         if origin in self._robots_parsers:
             return self._robots_parsers[origin]
 
-        robots_url = urlunparse((parsed.scheme, parsed.netloc, "/robots.txt", "", "", ""))
+        robots_url = urlunparse(
+            (parsed.scheme, parsed.netloc, "/robots.txt", "", "", "")
+        )
         parser = RobotFileParser()
         parser.set_url(robots_url)
 
@@ -186,7 +188,12 @@ def get_http_client() -> HTTPClient:
     return _client_singleton
 
 
-def fetch_text(url: str, timeout: float | None = None, ua: str | None = None, encoding: str | None = None) -> str:
+def fetch_text(
+    url: str,
+    timeout: float | None = None,
+    ua: str | None = None,
+    encoding: str | None = None,
+) -> str:
     """Compatibility wrapper around :class:`HTTPClient.get_text`."""
 
     config = _config_factory() if _config_factory else _default_config
@@ -207,4 +214,3 @@ def fetch_text(url: str, timeout: float | None = None, ua: str | None = None, en
 
     client = get_http_client()
     return client.get_text(url, encoding=encoding)
-
