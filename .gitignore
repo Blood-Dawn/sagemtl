@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .dist/
 build/
+dist/
 .env
 .venv*/
 .venv/
@@ -15,6 +16,7 @@ build/
 Thumbs.db
 
 data/
+!/tests/data/
 !.gitkeep
 !tests/data/
 !tests/data/**
