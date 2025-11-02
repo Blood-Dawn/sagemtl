@@ -1,5 +1,11 @@
 site_name: sagemtl
 nav:
   - Home: index.md
+  - Use: use.md
+  - Interfaces:
+      - TUI: tui.md
+      - CLI: cli.md
+  - Batch: batch.md
+  - Settings: settings.md
 theme:
   name: material
