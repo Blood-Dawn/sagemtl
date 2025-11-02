@@ -17,3 +17,5 @@ Thumbs.db
 
 data/
 !.gitkeep
+!tests/data/
+!tests/data/**
