@@ -15,4 +15,5 @@ build/
 Thumbs.db
 
 data/
+!/tests/data/
 !.gitkeep
