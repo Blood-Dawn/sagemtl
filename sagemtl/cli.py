@@ -9,6 +9,7 @@ from urllib.request import urlopen
 import typer
 
 from sagemtl.clean.text_normalize import normalize_text
+from sagemtl.config import load_config
 from sagemtl.crawl.extract import extract_main_text
 
 app = typer.Typer(help="SageMTL utilities")
