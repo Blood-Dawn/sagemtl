@@ -19,7 +19,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, FileText, Languages, BookText, Workflow } from 'lucide-react';
-import { apiClient, CleanOptions } from '@/api/client-v2';
+import { apiClient } from '@/api/client-v2';
+import type { CleanOptions } from '@/api/client-v2';
 import { useToast } from '@/hooks/use-toast';
 import { useJobWebSocket } from '@/hooks/use-job-websocket';
 
