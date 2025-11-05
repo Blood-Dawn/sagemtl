@@ -1,18 +1,32 @@
 # SageMTL - Machine Translation Toolchain
 
-**SageMTL** (Sage Machine Translation Library) is a comprehensive machine translation and language processing platform that provides a complete workflow for cleaning, crawling, and translating multilingual text content.
+**SageMTL** (Sage Machine Translation Library) is a comprehensive machine translation and language processing platform that provides a complete **Import → Process → Export** workflow for cleaning, crawling, and translating multilingual text content.
+
+## 🚀 What's New in v2
+
+- **Modular API** under `/api/*` with organized routers
+- **Dataset Import** with drag-drop file upload (`.txt`, `.md`, `.html`, `.jsonl`, `.epub`)
+- **Novel Management** with chapter tracking and metadata
+- **Compose Pipeline** - unified Clean + Translate + Glossary workflow
+- **Real-time Jobs** with WebSocket progress streaming
+- **Enhanced Glossary** with case-sensitivity and word boundaries
+- **Chapter Crawling** for extracting web novels
+
+📖 **[See IMPLEMENTATION.md for complete feature list](./IMPLEMENTATION.md)**
+📘 **[Read HOWTORUN.md for detailed usage guide](./HOWTORUN.md)**
 
 ## Features
 
 - **Text Cleaning**: Normalize text with configurable options (smart quotes, em-dashes, Unicode normalization, etc.)
-- **HTML Crawling**: Extract structured content from HTML with boilerplate removal
+- **HTML Crawling**: Extract structured content from HTML with boilerplate removal + chapter extraction
 - **Translation Queue**: Asynchronous translation job processing with pluggable providers
-- **Dataset Management**: Register and manage local datasets in JSONL/CSV formats
+- **Dataset Management**: Import, register, and manage datasets (text, novels, translations)
+- **Glossary System**: CSV/JSON glossaries with case-sensitive matching and word boundaries
 - **Multiple Interfaces**:
   - **CLI**: Command-line interface for automation
   - **TUI**: Interactive terminal UI with Textual
-  - **REST API**: FastAPI HTTP server with OpenAPI docs
-  - **Web UI**: React dashboard (in `ui/` directory)
+  - **REST API v2**: FastAPI with modular routers, WebSockets, and file uploads
+  - **Web UI**: React 19 dashboard (in `ui/` directory)
 - **Batch Processing**: High-throughput directory processing with resume capability
 - **Configuration**: Layered config (defaults → TOML → ENV vars → CLI args)
 
@@ -248,16 +262,42 @@ sagemtl/
 └── pyproject.toml       # Package metadata
 ```
 
-## API Endpoints
+## API v2 Endpoints
 
-When running `sagemtl serve`, the following endpoints are available:
+Start the API server with:
+```bash
+sagemtl serve --v2 --port 8000
+```
 
+### Compose (Unified Pipeline)
+- `POST /api/compose/clean` - Clean text with glossary support
+- `POST /api/compose/translate` - Queue translation with pre/post glossary
+- `POST /api/compose/pipeline` - Full workflow: Clean → Translate → Save
+
+### Datasets (Import & Management)
+- `GET /api/datasets` - List all datasets
+- `POST /api/datasets/import` - Import files (multipart upload)
+- `GET /api/datasets/novels` - List novel-type datasets
+- `GET /api/datasets/{id}` - Get dataset details
+- `GET /api/datasets/{id}/files` - List dataset files
+- `DELETE /api/datasets/{id}` - Delete dataset
+
+### Crawl (Chapter Extraction)
+- `POST /api/crawl/run` - Crawl chapters (async job)
+- `POST /api/crawl/extract` - Extract HTML (sync)
+
+### Jobs (Real-time Tracking)
+- `GET /api/jobs` - List all jobs
+- `GET /api/jobs/{id}` - Get job status
+- `DELETE /api/jobs/{id}` - Cancel job
+- `POST /api/jobs/{id}/retry` - Retry failed job
+- `WebSocket /api/jobs/ws/{id}` - Real-time progress stream
+
+### Legacy Endpoints (v1 - backward compatible)
 - `POST /clean` - Clean text
 - `POST /crawl` - Extract from HTML
 - `POST /translate` - Queue translation job
-- `GET /jobs` - List all jobs
-- `GET /jobs/{job_id}` - Get job status
-- `DELETE /jobs/{job_id}` - Cancel job
+- `GET /jobs` - List jobs
 - `GET /datasets` - List datasets
 
 Visit `http://localhost:8000/docs` for interactive API documentation.

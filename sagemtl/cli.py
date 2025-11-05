@@ -407,6 +407,7 @@ def settings_set(
 def serve(
     host: Annotated[str, typer.Option("--host", help="Bind address")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", help="TCP port")] = 8000,
+    v2: Annotated[bool, typer.Option("--v2", help="Use v2 API with modular routers")] = True,
 ) -> None:
     try:
         import uvicorn
@@ -414,7 +415,10 @@ def serve(
         raise typer.BadParameter(
             "uvicorn is required to use the serve command"
         ) from exc
-    uvicorn.run("sagemtl.serve.api:app", host=host, port=port)
+
+    api_module = "sagemtl.serve.api_v2:app" if v2 else "sagemtl.serve.api:app"
+    typer.echo(f"Starting SageMTL API {'v2' if v2 else 'v1'} on http://{host}:{port}")
+    uvicorn.run(api_module, host=host, port=port)
 
 
 @app.command(help="Launch the Textual-based terminal UI")
