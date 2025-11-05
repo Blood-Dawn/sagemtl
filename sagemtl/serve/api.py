@@ -155,6 +155,33 @@ def get_jobs() -> list[dict[str, object]]:
     return [job.to_dict() for job in queue.list_jobs()]
 
 
+@app.get("/jobs/{job_id}")
+def get_job(job_id: str) -> dict[str, object]:
+    queue = get_translation_queue()
+    job = queue.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return job.to_dict()
+
+
+@app.delete("/jobs/{job_id}")
+def cancel_job(job_id: str) -> dict[str, str]:
+    """Cancel a job (marks it as failed for now, actual cancellation not implemented)."""
+    from sagemtl.jobs.store import get_job_store
+
+    store = get_job_store()
+    job = store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    if job.status in ("queued", "running"):
+        job.status = "cancelled"
+        job.error = "Cancelled by user"
+        store.upsert(job)
+
+    return {"status": "cancelled", "job_id": job_id}
+
+
 @app.get("/datasets")
 def get_datasets() -> list[dict[str, object]]:
     registry = get_dataset_registry()

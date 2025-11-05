@@ -1,0 +1,28 @@
+# SageMTL Configuration Example
+# Copy this file to ~/.sagemtl/config.toml and customize as needed
+
+# Newline handling mode when writing files
+# Options: "lf", "crlf", "system", "preserve"
+newline_mode = "lf"
+
+# Thread/worker count for CPU-intensive tasks
+# Default: number of CPU cores
+thread_count = 8
+
+# Default input path for clean command
+# Use "-" for stdin
+clean_input_path = "-"
+
+# Default output path for clean command
+# Use null for stdout
+clean_output_path = null
+
+# Default file glob pattern for crawl batch operations
+crawl_glob = "*.html"
+
+# Default output directory for crawl batch results
+crawl_outdir = "out"
+
+# Whether to output JSONL format for crawl batch
+# If false, outputs individual JSON files
+crawl_jsonl = false

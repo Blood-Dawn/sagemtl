@@ -417,34 +417,23 @@ def serve(
     uvicorn.run("sagemtl.serve.api:app", host=host, port=port)
 
 
-def _launch_gui() -> int:
+@app.command(help="Launch the Textual-based terminal UI")
+def tui() -> None:
     try:
-        from textual.app import App, ComposeResult
-        from textual.widgets import Static
+        from sagemtl.tui.app import SageMTLApp
     except ModuleNotFoundError:
         typer.secho(
-            "Textual is required for the GUI. Install textual>=0.44 to use this command.",
+            "Textual is required for the TUI. Install with: pip install sagemtl[tui]",
             err=True,
             fg=typer.colors.RED,
         )
-        return 1
+        raise typer.Exit(1)
 
-    class SageMTLApp(App):
-        TITLE = "SageMTL"
-
-        def compose(self) -> ComposeResult:  # type: ignore[override]
-            yield Static("SageMTL GUI stub")
-
-    SageMTLApp().run()
-    return 0
-
-
-@app.command(help="Launch the Textual-based SageMTL GUI")
-def gui() -> None:
-    typer.echo("Launching SageMTL Textual GUI...")
-    exit_code = _launch_gui()
-    if exit_code != 0:
-        raise typer.Exit(exit_code)
+    try:
+        SageMTLApp().run()
+    except Exception as exc:
+        typer.secho(f"TUI error: {exc}", err=True, fg=typer.colors.RED)
+        raise typer.Exit(1)
 
 
 def main() -> None:
