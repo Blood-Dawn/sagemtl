@@ -116,12 +116,49 @@ def _parse_settings(data: Dict[str, Any]) -> Settings:
         return Settings.model_validate(cleaned)
 
 
+def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
+    """Apply environment variable overrides with SAGEMTL_ prefix.
+
+    Environment variables can use __ to indicate nested keys.
+    For example: SAGEMTL_THREAD_COUNT=4 or SAGEMTL_CLEAN__INPUT_PATH=/tmp/input
+    """
+    result = data.copy()
+
+    for key, value in os.environ.items():
+        if not key.startswith("SAGEMTL_"):
+            continue
+
+        # Remove prefix and convert to lowercase
+        config_key = key[8:].lower()
+
+        # Handle nested keys with __ separator
+        if "__" in config_key:
+            # For now, we'll flatten it (future enhancement for nested dicts)
+            config_key = config_key.replace("__", "_")
+
+        # Try to parse as JSON first, fall back to string
+        try:
+            parsed_value = json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            # Try to infer the type
+            if value.lower() in ("true", "false"):
+                parsed_value = value.lower() == "true"
+            elif value.isdigit():
+                parsed_value = int(value)
+            else:
+                parsed_value = value
+
+        result[config_key] = parsed_value
+
+    return result
+
+
 def load_config(
     path: str | Path | None = None,
     *,
     use_cache: bool = True,
 ) -> Settings:
-    """Load :class:`Settings` from disk."""
+    """Load :class:`Settings` from disk and apply environment overrides."""
 
     global _CONFIG_CACHE, _CONFIG_CACHE_PATH
 
@@ -137,6 +174,9 @@ def load_config(
                 data = tomllib.load(fh)
         except (tomllib.TOMLDecodeError, OSError):
             data = {}
+
+    # Apply environment variable overrides
+    data = _apply_env_overrides(data)
 
     settings = _parse_settings(data)
 

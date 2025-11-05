@@ -1,11 +1,48 @@
-site_name: sagemtl
+site_name: SageMTL
+site_description: Machine Translation Toolchain
 nav:
   - Home: index.md
-  - Use: use.md
+  - Getting Started: getting-started.md
+  - Quick Reference: use.md
   - Interfaces:
-      - TUI: tui.md
-      - CLI: cli.md
-  - Batch: batch.md
-  - Settings: settings.md
+      - CLI Reference: cli.md
+      - Terminal UI (TUI): tui.md
+      - REST API: api.md
+  - Guides:
+      - Batch Processing: batch.md
+      - Configuration: settings.md
 theme:
   name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
