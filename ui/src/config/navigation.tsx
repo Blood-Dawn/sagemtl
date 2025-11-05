@@ -1,4 +1,4 @@
-import { Search, Sparkles, Globe2, Database, Workflow, Settings } from 'lucide-react';
+import { Search, Sparkles, Globe2, Database, Workflow, Settings, Layers } from 'lucide-react';
 
 export type NavItem = {
   label: string;
@@ -12,6 +12,12 @@ export type NavSection = {
 };
 
 export const navSections: NavSection[] = [
+  {
+    label: 'Workflow',
+    items: [
+      { label: 'Compose', icon: Layers, to: '/compose' },
+    ],
+  },
   {
     label: 'Core',
     items: [
