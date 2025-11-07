@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Plus, Edit2, Trash2, Download, Upload, Save, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Download, Upload, Save, X, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,30 +9,40 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DataTable } from '@/components/data-table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/components/toaster';
 import { apiClient } from '@/api/client-v2';
-import type { GlossaryEntry } from '@/api/client-v2';
-
-const defaults = {
-  SAGEMTL_DATA_DIR: '/data/sagemtl',
-  SAGEMTL_CACHE_DIR: '/data/cache',
-  API_BASE: 'http://localhost:8000',
-  ENABLE_GPU: 'true',
-  DEFAULT_MODEL: 'nllb-200-3.3B',
-};
-
-type SettingsState = typeof defaults;
+import type { GlossaryEntry, AppSettings } from '@/api/client-v2';
 
 export function SettingsPage() {
-  const [settings, setSettings] = useState<SettingsState>(defaults);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [glossaries, setGlossaries] = useState<string[]>([]);
   const [selectedGlossary, setSelectedGlossary] = useState<string | null>(null);
   const [glossaryEntries, setGlossaryEntries] = useState<GlossaryEntry[]>([]);
   const [editingEntry, setEditingEntry] = useState<GlossaryEntry | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const { push } = useToast();
+
+  // Load settings from API
+  const loadSettings = useCallback(async () => {
+    setIsLoadingSettings(true);
+    try {
+      const data = await apiClient.getSettings();
+      setSettings(data);
+    } catch (error) {
+      push({
+        title: 'Failed to load settings',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  }, [push]);
 
   // Load glossaries
   const loadGlossaries = useCallback(async () => {
@@ -66,8 +76,9 @@ export function SettingsPage() {
   );
 
   useEffect(() => {
+    loadSettings();
     loadGlossaries();
-  }, [loadGlossaries]);
+  }, [loadSettings, loadGlossaries]);
 
   useEffect(() => {
     if (selectedGlossary) {
@@ -75,8 +86,38 @@ export function SettingsPage() {
     }
   }, [selectedGlossary, loadGlossaryEntries]);
 
-  const handleSaveSettings = () => {
-    push({ title: 'Settings saved', description: 'Runtime configuration persisted' });
+  const handleSaveSettings = async () => {
+    if (!settings) return;
+
+    setIsSavingSettings(true);
+    try {
+      await apiClient.updateSettings(settings);
+      push({ title: 'Settings saved', description: 'Configuration persisted to config.toml' });
+    } catch (error) {
+      push({
+        title: 'Failed to save settings',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const handleResetSettings = async () => {
+    if (!confirm('Reset all settings to defaults? This cannot be undone.')) return;
+
+    try {
+      await apiClient.resetSettings();
+      await loadSettings();
+      push({ title: 'Settings reset', description: 'All settings restored to defaults' });
+    } catch (error) {
+      push({
+        title: 'Failed to reset settings',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleCreateGlossary = async () => {
@@ -236,29 +277,124 @@ export function SettingsPage() {
         {/* Settings Tab */}
         <TabsContent value="settings">
           <Card>
-            <CardHeader>
-              <CardTitle>Runtime Configuration</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Application Settings</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetSettings}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Reset to Defaults
+              </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {Object.entries(settings).map(([key, value]) => (
-                <div key={key} className="grid gap-2 md:grid-cols-[220px_1fr] md:items-center">
-                  <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                    {key}
-                  </label>
-                  <Input
-                    value={value}
-                    onChange={(event) =>
-                      setSettings((prev) => ({ ...prev, [key]: event.target.value }))
-                    }
-                  />
-                </div>
-              ))}
-              <div className="flex justify-end">
-                <Button onClick={handleSaveSettings} className="px-6">
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </Button>
-              </div>
+            <CardContent className="space-y-6">
+              {isLoadingSettings ? (
+                <p className="text-center text-muted-foreground">Loading settings...</p>
+              ) : settings ? (
+                <>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="newline-mode">Newline Mode</Label>
+                      <Select
+                        value={settings.newline_mode}
+                        onValueChange={(value) => setSettings({ ...settings, newline_mode: value })}
+                      >
+                        <SelectTrigger id="newline-mode">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="lf">LF (Unix)</SelectItem>
+                          <SelectItem value="crlf">CRLF (Windows)</SelectItem>
+                          <SelectItem value="system">System Default</SelectItem>
+                          <SelectItem value="preserve">Preserve Original</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="clean-input-path">Clean Input Path (default)</Label>
+                      <Input
+                        id="clean-input-path"
+                        value={settings.clean_input_path}
+                        onChange={(e) => setSettings({ ...settings, clean_input_path: e.target.value })}
+                        placeholder="-"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="clean-output-path">Clean Output Path (default)</Label>
+                      <Input
+                        id="clean-output-path"
+                        value={settings.clean_output_path || ''}
+                        onChange={(e) => setSettings({ ...settings, clean_output_path: e.target.value || null })}
+                        placeholder="stdout"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="crawl-glob">Crawl Glob Pattern</Label>
+                      <Input
+                        id="crawl-glob"
+                        value={settings.crawl_glob}
+                        onChange={(e) => setSettings({ ...settings, crawl_glob: e.target.value })}
+                        placeholder="*.html"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="crawl-outdir">Crawl Output Directory</Label>
+                      <Input
+                        id="crawl-outdir"
+                        value={settings.crawl_outdir}
+                        onChange={(e) => setSettings({ ...settings, crawl_outdir: e.target.value })}
+                        placeholder="out"
+                      />
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="crawl-jsonl"
+                        checked={settings.crawl_jsonl}
+                        onCheckedChange={(checked) => setSettings({ ...settings, crawl_jsonl: checked as boolean })}
+                      />
+                      <Label htmlFor="crawl-jsonl">Output crawl results as JSONL</Label>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="thread-count">Thread Count (CPU-heavy tasks)</Label>
+                      <Input
+                        id="thread-count"
+                        type="number"
+                        min="1"
+                        value={settings.thread_count}
+                        onChange={(e) => setSettings({ ...settings, thread_count: parseInt(e.target.value) || 1 })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={loadSettings}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleSaveSettings} disabled={isSavingSettings} className="px-6">
+                      {isSavingSettings ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-center text-destructive">Failed to load settings</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

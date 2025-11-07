@@ -7,7 +7,9 @@
  * - Right: Monaco Diff Editor (Before/After/Side-by-Side)
  */
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useDropzone } from 'react-dropzone';
 import { DiffEditor } from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,21 +20,83 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, FileText, Languages, BookText, Workflow } from 'lucide-react';
+import { Loader2, FileText, Languages, BookText, Workflow, Upload } from 'lucide-react';
 import { apiClient } from '@/api/client-v2';
 import type { CleanOptions } from '@/api/client-v2';
 import { useToast } from '@/hooks/use-toast';
 import { useJobWebSocket } from '@/hooks/use-job-websocket';
 
 export function ComposePage() {
+  const location = useLocation();
   const [sourceText, setSourceText] = useState('');
   const [cleanedText, setCleanedText] = useState('');
   const [translatedText, setTranslatedText] = useState('');
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [diffMode, setDiffMode] = useState<'inline' | 'side-by-side'>('side-by-side');
+  const [isUploading, setIsUploading] = useState(false);
+  const [currentDatasetId, setCurrentDatasetId] = useState<string | null>(null);
 
   const { toast } = useToast();
+
+  // Load text from navigation state (when opening from Datasets page)
+  useEffect(() => {
+    if (location.state) {
+      const { text, datasetId } = location.state as { text?: string; datasetId?: string };
+      if (text) {
+        setSourceText(text);
+        toast({
+          title: 'Dataset loaded',
+          description: 'Text loaded from dataset',
+        });
+      }
+      if (datasetId) {
+        setCurrentDatasetId(datasetId);
+      }
+    }
+  }, [location.state, toast]);
+
+  // Drag-drop file import
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      if (acceptedFiles.length === 0) return;
+
+      setIsUploading(true);
+      try {
+        // Read the first file's content
+        const file = acceptedFiles[0];
+        const text = await file.text();
+        setSourceText(text);
+
+        toast({
+          title: 'File loaded',
+          description: `Loaded ${file.name} (${(file.size / 1024).toFixed(1)} KB)`,
+        });
+      } catch (error) {
+        console.error('File load error:', error);
+        toast({
+          title: 'Load failed',
+          description: error instanceof Error ? error.message : 'Failed to load file',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [toast]
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'text/plain': ['.txt'],
+      'text/markdown': ['.md'],
+      'text/html': ['.html'],
+      'application/json': ['.json', '.jsonl'],
+    },
+    disabled: isUploading || isLoading,
+    noClick: true, // Only activate on drop, not click
+  });
 
   // Clean options state
   const [cleanOptions, setCleanOptions] = useState<CleanOptions>({
@@ -221,15 +285,32 @@ export function ComposePage() {
               <FileText className="h-5 w-5" />
               Source Text
             </CardTitle>
-            <CardDescription>Enter or paste your source text here</CardDescription>
+            <CardDescription>Enter text or drag & drop a file</CardDescription>
           </CardHeader>
           <CardContent>
-            <Textarea
-              value={sourceText}
-              onChange={(e) => setSourceText(e.target.value)}
-              placeholder="Enter text to process..."
-              className="min-h-[400px] font-mono"
-            />
+            <div
+              {...getRootProps()}
+              className={`relative ${
+                isDragActive ? 'ring-2 ring-primary ring-offset-2 rounded-lg' : ''
+              }`}
+            >
+              <input {...getInputProps()} />
+              <Textarea
+                value={sourceText}
+                onChange={(e) => setSourceText(e.target.value)}
+                placeholder="Enter text to process or drag & drop a file here..."
+                className="min-h-[400px] font-mono"
+                disabled={isUploading}
+              />
+              {isDragActive && (
+                <div className="absolute inset-0 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary rounded-lg pointer-events-none">
+                  <div className="flex flex-col items-center gap-2 text-primary">
+                    <Upload className="h-12 w-12" />
+                    <p className="font-medium">Drop file here to load</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -379,22 +460,56 @@ export function ComposePage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="src-lang">Source Language</Label>
-                    <Input
-                      id="src-lang"
+                    <Select
                       value={translateOptions.src_lang}
-                      onChange={(e) => setTranslateOptions((prev) => ({ ...prev, src_lang: e.target.value }))}
-                      placeholder="auto"
-                    />
+                      onValueChange={(value) => setTranslateOptions((prev) => ({ ...prev, src_lang: value }))}
+                    >
+                      <SelectTrigger id="src-lang">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Auto-detect</SelectItem>
+                        <SelectItem value="zh">Chinese (中文)</SelectItem>
+                        <SelectItem value="ja">Japanese (日本語)</SelectItem>
+                        <SelectItem value="ko">Korean (한국어)</SelectItem>
+                        <SelectItem value="en">English</SelectItem>
+                        <SelectItem value="fr">French (Français)</SelectItem>
+                        <SelectItem value="es">Spanish (Español)</SelectItem>
+                        <SelectItem value="de">German (Deutsch)</SelectItem>
+                        <SelectItem value="ru">Russian (Русский)</SelectItem>
+                        <SelectItem value="ar">Arabic (العربية)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="tgt-lang">Target Language</Label>
-                    <Input
-                      id="tgt-lang"
+                    <Select
                       value={translateOptions.tgt_lang}
-                      onChange={(e) => setTranslateOptions((prev) => ({ ...prev, tgt_lang: e.target.value }))}
-                      placeholder="en"
-                    />
+                      onValueChange={(value) => setTranslateOptions((prev) => ({ ...prev, tgt_lang: value }))}
+                    >
+                      <SelectTrigger id="tgt-lang">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en">English</SelectItem>
+                        <SelectItem value="zh">Chinese (中文)</SelectItem>
+                        <SelectItem value="ja">Japanese (日本語)</SelectItem>
+                        <SelectItem value="ko">Korean (한국어)</SelectItem>
+                        <SelectItem value="fr">French (Français)</SelectItem>
+                        <SelectItem value="es">Spanish (Español)</SelectItem>
+                        <SelectItem value="de">German (Deutsch)</SelectItem>
+                        <SelectItem value="pt">Portuguese (Português)</SelectItem>
+                        <SelectItem value="ru">Russian (Русский)</SelectItem>
+                        <SelectItem value="ar">Arabic (العربية)</SelectItem>
+                        <SelectItem value="it">Italian (Italiano)</SelectItem>
+                        <SelectItem value="nl">Dutch (Nederlands)</SelectItem>
+                        <SelectItem value="pl">Polish (Polski)</SelectItem>
+                        <SelectItem value="tr">Turkish (Türkçe)</SelectItem>
+                        <SelectItem value="vi">Vietnamese (Tiếng Việt)</SelectItem>
+                        <SelectItem value="th">Thai (ไทย)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
