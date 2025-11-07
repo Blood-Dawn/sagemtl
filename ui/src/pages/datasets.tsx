@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Upload, FolderOpen, Plus, Download, FileText, BookOpen } from 'lucide-react';
@@ -17,6 +18,7 @@ export function DatasetsPage() {
   const [novels, setNovels] = useState<Novel[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const { push } = useToast();
+  const navigate = useNavigate();
 
   // Fetch datasets and novels
   const loadData = useCallback(async () => {
@@ -142,12 +144,27 @@ export function DatasetsPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              push({
-                title: 'Opening in Compose',
-                description: `Loading dataset: ${row.original.name}`,
-              });
-              // TODO: Navigate to compose with dataset selected
+            onClick={async () => {
+              try {
+                // Load the first file from the dataset
+                const files = await apiClient.listDatasetFiles(row.original.id);
+                if (files.length > 0) {
+                  const fileContent = await apiClient.getDatasetFile(row.original.id, files[0].path);
+                  navigate('/compose', { state: { text: fileContent.content, datasetId: row.original.id } });
+                } else {
+                  push({
+                    title: 'No files',
+                    description: 'This dataset has no files to open',
+                    variant: 'destructive',
+                  });
+                }
+              } catch (error) {
+                push({
+                  title: 'Failed to open',
+                  description: error instanceof Error ? error.message : 'Unknown error',
+                  variant: 'destructive',
+                });
+              }
             }}
           >
             Open
@@ -277,11 +294,7 @@ export function DatasetsPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => {
-                          push({
-                            title: 'Opening novel',
-                            description: `Loading ${novel.title} in Compose`,
-                          });
-                          // TODO: Navigate to compose with novel selected
+                          navigate('/compose', { state: { datasetId: novel.id, isNovel: true } });
                         }}
                       >
                         Open

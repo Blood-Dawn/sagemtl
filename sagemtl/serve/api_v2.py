@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from sagemtl.serve.routers import compose_router, datasets_router, crawl_router, jobs_router
+from sagemtl.serve.routers import compose_router, datasets_router, crawl_router, jobs_router, settings_router
 
 # Create app
 app = FastAPI(
@@ -28,6 +28,7 @@ app.include_router(compose_router)
 app.include_router(datasets_router)
 app.include_router(crawl_router)
 app.include_router(jobs_router)
+app.include_router(settings_router)
 
 
 @app.get("/")
@@ -42,6 +43,7 @@ def root():
             "datasets": "/api/datasets/*",
             "crawl": "/api/crawl/*",
             "jobs": "/api/jobs/*",
+            "settings": "/api/settings/*",
         },
     }
 

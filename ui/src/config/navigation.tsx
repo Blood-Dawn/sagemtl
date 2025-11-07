@@ -34,7 +34,7 @@ export const navSections: NavSection[] = [
     ],
   },
   {
-    label: 'Admin',
+    label: 'Settings',
     items: [{ label: 'Settings', icon: Settings, to: '/settings' }],
   },
 ];

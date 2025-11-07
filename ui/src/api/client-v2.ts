@@ -130,6 +130,24 @@ export interface JobResponse {
   progress?: number;
 }
 
+export interface AppSettings {
+  newline_mode: string;
+  clean_input_path: string;
+  clean_output_path: string | null;
+  crawl_glob: string;
+  crawl_outdir: string;
+  crawl_jsonl: boolean;
+  thread_count: number;
+}
+
+export interface GlossaryEntry {
+  source: string;
+  target: string;
+  case_sensitive?: boolean;
+  word_boundary?: boolean;
+  notes?: string;
+}
+
 // API Client Class
 export class SageMTLClient {
   private baseUrl: string;
@@ -343,6 +361,104 @@ export class SageMTLClient {
   createJobWebSocket(jobId: string): WebSocket {
     const wsUrl = this.baseUrl.replace('http', 'ws');
     return new WebSocket(`${wsUrl}/api/jobs/ws/${jobId}`);
+  }
+
+  // Settings endpoints
+  async getSettings(): Promise<AppSettings> {
+    const response = await fetch(`${this.baseUrl}/api/settings`);
+
+    if (!response.ok) {
+      throw new Error(`Get settings failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async updateSettings(settings: Partial<AppSettings>): Promise<AppSettings> {
+    const response = await fetch(`${this.baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Update settings failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async resetSettings(): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${this.baseUrl}/api/settings/reset`, {
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Reset settings failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // Glossary endpoints
+  async listGlossaries(): Promise<{ glossaries: string[] }> {
+    const response = await fetch(`${this.baseUrl}/api/compose/glossaries`);
+
+    if (!response.ok) {
+      throw new Error(`List glossaries failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async getGlossary(path: string): Promise<{ entries: GlossaryEntry[] }> {
+    const response = await fetch(`${this.baseUrl}/api/compose/glossaries/${encodeURIComponent(path)}`);
+
+    if (!response.ok) {
+      throw new Error(`Get glossary failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async createGlossary(name: string): Promise<{ path: string; message: string }> {
+    const response = await fetch(`${this.baseUrl}/api/compose/glossaries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Create glossary failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async updateGlossary(path: string, data: { entries: GlossaryEntry[] }): Promise<{ message: string }> {
+    const response = await fetch(`${this.baseUrl}/api/compose/glossaries/${encodeURIComponent(path)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Update glossary failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async deleteGlossary(path: string): Promise<{ status: string }> {
+    const response = await fetch(`${this.baseUrl}/api/compose/glossaries/${encodeURIComponent(path)}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Delete glossary failed: ${response.statusText}`);
+    }
+
+    return response.json();
   }
 }
 
