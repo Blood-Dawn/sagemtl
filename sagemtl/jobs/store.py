@@ -57,9 +57,7 @@ class JobStore:
 
     def __init__(self, path: Path | None = None) -> None:
         env_override = os.environ.get(JOBS_ENV)
-        self.path = (
-            Path(env_override).expanduser() if env_override else path or DEFAULT_PATH
-        )
+        self.path = Path(env_override).expanduser() if env_override else path or DEFAULT_PATH
         if self.path.is_dir():
             self.path = self.path / "jobs.json"
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,9 +79,7 @@ class JobStore:
 
     def _flush(self) -> None:
         payload = [job.to_dict() for job in self._jobs.values()]
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
+        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     def list(self) -> List[JobRecord]:
         with self._lock:
@@ -113,11 +109,7 @@ class JobStore:
         keep_statuses = set(statuses) if statuses else {"queued", "running"}
         removed: List[str] = []
         with self._lock:
-            to_delete = [
-                job_id
-                for job_id, job in self._jobs.items()
-                if job.status.lower() not in keep_statuses
-            ]
+            to_delete = [job_id for job_id, job in self._jobs.items() if job.status.lower() not in keep_statuses]
             for job_id in to_delete:
                 removed.append(job_id)
                 del self._jobs[job_id]

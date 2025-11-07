@@ -28,6 +28,7 @@ router = APIRouter(prefix="/api/crawl", tags=["crawl"])
 
 class CrawlChapterRequest(BaseModel):
     """Request for crawling chapters from a novel website."""
+
     start_url: str
     depth: int = 1
     max_chapters: Optional[int] = None
@@ -74,7 +75,6 @@ def extract_chapters_from_blocks(blocks: list[dict]) -> list[dict[str, str]]:
 
 def save_chapters_to_dataset(dataset_name: str, chapters: list[dict[str, str]], novel_title: str = "") -> Path:
     """Save extracted chapters to a dataset directory."""
-    import os
     from sagemtl.serve.routers.datasets import get_data_dir
 
     data_dir = get_data_dir() / dataset_name
@@ -145,17 +145,13 @@ async def crawl_chapters_worker(job_id: str, request: CrawlChapterRequest):
 
         # Limit chapters if requested
         if request.max_chapters:
-            chapters = chapters[:request.max_chapters]
+            chapters = chapters[: request.max_chapters]
 
         # Generate dataset name
         dataset_name = request.dataset_name or f"novel-{uuid.uuid4().hex[:8]}"
 
         # Save to dataset
-        data_dir = save_chapters_to_dataset(
-            dataset_name,
-            chapters,
-            request.novel_title or dataset_name
-        )
+        data_dir = save_chapters_to_dataset(dataset_name, chapters, request.novel_title or dataset_name)
 
         # Update job
         job.status = "done"
@@ -211,14 +207,13 @@ async def crawl_chapters(request: CrawlChapterRequest) -> CrawlChapterResponse:
     asyncio.create_task(crawl_chapters_worker(job_id, request))
 
     return CrawlChapterResponse(
-        job_id=job_id,
-        status="queued",
-        message=f"Crawl job queued. Track at /api/jobs/{job_id}"
+        job_id=job_id, status="queued", message=f"Crawl job queued. Track at /api/jobs/{job_id}"
     )
 
 
 class ExtractRequest(BaseModel):
     """Request for synchronous HTML extraction."""
+
     html: Optional[str] = None
     url: Optional[str] = None
     allow_selectors: List[str] = Field(default_factory=list)
@@ -268,6 +263,7 @@ def extract_html(request: ExtractRequest) -> CrawlResult:
 
 class NovelCrawlRequest(BaseModel):
     """Request for novel chapter crawling with automatic pattern detection."""
+
     start_url: str
     start_chapter: int = 1
     end_chapter: int = 10
@@ -303,7 +299,9 @@ async def novel_crawl_worker(job_id: str, request: NovelCrawlRequest):
         if is_supported and is_lncrawl_available():
             # Use LNCrawl for supported sites
             store.append_log(job_id, f"URL supported by lightnovel-crawler ({source_name})")
-            store.append_log(job_id, f"Using lightnovel-crawler to fetch chapters {request.start_chapter}-{request.end_chapter}")
+            store.append_log(
+                job_id, f"Using lightnovel-crawler to fetch chapters {request.start_chapter}-{request.end_chapter}"
+            )
 
             novel_dataset = fetch_novel(
                 url=request.start_url,
@@ -331,7 +329,9 @@ async def novel_crawl_worker(job_id: str, request: NovelCrawlRequest):
 
             crawler = NovelCrawler(max_concurrent=request.max_concurrent)
 
-            store.append_log(job_id, f"Detecting chapter pattern and crawling chapters {request.start_chapter}-{request.end_chapter}")
+            store.append_log(
+                job_id, f"Detecting chapter pattern and crawling chapters {request.start_chapter}-{request.end_chapter}"
+            )
             novel_info = crawler.crawl_novel(
                 start_url=request.start_url,
                 start_chapter=request.start_chapter,
@@ -375,6 +375,7 @@ async def novel_crawl_worker(job_id: str, request: NovelCrawlRequest):
 
     except Exception as exc:
         import time
+
         end_time = time.time()
         runtime_ms = (end_time - start_time) * 1000
         job.status = "failed"
@@ -427,7 +428,7 @@ async def crawl_novel(request: NovelCrawlRequest) -> CrawlChapterResponse:
     )
 
     store.upsert(job)
-    store.append_log(job_id, f"Novel crawl job queued")
+    store.append_log(job_id, "Novel crawl job queued")
 
     # Start background task
     asyncio.create_task(novel_crawl_worker(job_id, request))
@@ -435,5 +436,5 @@ async def crawl_novel(request: NovelCrawlRequest) -> CrawlChapterResponse:
     return CrawlChapterResponse(
         job_id=job_id,
         status="queued",
-        message=f"Novel crawl job queued. Expected to crawl {request.end_chapter - request.start_chapter + 1} chapters. Track at /api/jobs/{job_id}"
+        message=f"Novel crawl job queued. Expected to crawl {request.end_chapter - request.start_chapter + 1} chapters. Track at /api/jobs/{job_id}",
     )

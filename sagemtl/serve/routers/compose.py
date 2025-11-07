@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/compose", tags=["compose"])
 
 class ComposeCleanOptions(BaseModel):
     """Enhanced clean options with glossary support."""
+
     smart_quotes: bool = True
     em_dash: bool = True
     minus_sign: bool = True
@@ -69,11 +70,7 @@ def compose_clean(payload: ComposeCleanRequest) -> ComposeCleanResponse:
             cleaned_text = apply_glossary(cleaned_text, glossary_entries)
             glossary_applied = True
 
-    return ComposeCleanResponse(
-        text=cleaned_text,
-        meta=result.meta,
-        glossary_applied=glossary_applied
-    )
+    return ComposeCleanResponse(text=cleaned_text, meta=result.meta, glossary_applied=glossary_applied)
 
 
 class ComposeTranslateRequest(BaseModel):
@@ -131,6 +128,7 @@ def compose_translate(payload: ComposeTranslateRequest) -> ComposeTranslateRespo
 
 class ComposePipelineRequest(BaseModel):
     """Full pipeline: Import → Clean → Translate → Glossary → Save."""
+
     source_text: str
     dataset_id: Optional[str] = None
     clean_options: ComposeCleanOptions = Field(default_factory=ComposeCleanOptions)
@@ -161,12 +159,7 @@ def compose_pipeline(payload: ComposePipelineRequest) -> ComposePipelineResponse
     Returns the translation job_id for tracking.
     """
     # Step 1: Clean
-    clean_result = compose_clean(
-        ComposeCleanRequest(
-            text=payload.source_text,
-            options=payload.clean_options
-        )
-    )
+    clean_result = compose_clean(ComposeCleanRequest(text=payload.source_text, options=payload.clean_options))
 
     # Step 2 & 3: Translate (with glossary)
     translate_result = compose_translate(
@@ -186,5 +179,5 @@ def compose_pipeline(payload: ComposePipelineRequest) -> ComposePipelineResponse
     return ComposePipelineResponse(
         translate_job_id=translate_result.job_id,
         status="queued",
-        message="Pipeline queued successfully. Track via /api/jobs/{job_id}"
+        message="Pipeline queued successfully. Track via /api/jobs/{job_id}",
     )

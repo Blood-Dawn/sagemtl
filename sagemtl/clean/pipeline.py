@@ -61,9 +61,7 @@ def _load_jsonl(path: Path) -> Iterable[tuple[str, Dict[str, Any]]]:
             yield source, meta | {"text": text}
 
 
-def _load_csv(
-    path: Path, *, delimiter: str = ","
-) -> Iterable[tuple[str, Dict[str, Any]]]:
+def _load_csv(path: Path, *, delimiter: str = ",") -> Iterable[tuple[str, Dict[str, Any]]]:
     with path.open("r", encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh, delimiter=delimiter)
         for row in reader:
@@ -84,9 +82,7 @@ def _load_directory(path: Path) -> Iterable[tuple[str, Dict[str, Any]]]:
         yield str(entry), {"text": text, **meta}
 
 
-def iter_clean_batch(
-    inputs: Sequence[Path], *, options: CleanOptions | None = None
-) -> Iterator[CleanResult]:
+def iter_clean_batch(inputs: Sequence[Path], *, options: CleanOptions | None = None) -> Iterator[CleanResult]:
     """Yield :class:`CleanResult` objects for the provided input paths."""
 
     opts = options or CleanOptions()

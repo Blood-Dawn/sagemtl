@@ -76,15 +76,9 @@ def _normalize_options(
 
 
 def clean_run(
-    inp: Annotated[
-        str, typer.Option("--in", "-i", help="Input path or '-' for stdin")
-    ] = "-",
-    out: Annotated[
-        Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")
-    ] = None,
-    smart_quotes: Annotated[
-        bool, typer.Option("--smart-quotes/--no-smart-quotes")
-    ] = True,
+    inp: Annotated[str, typer.Option("--in", "-i", help="Input path or '-' for stdin")] = "-",
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")] = None,
+    smart_quotes: Annotated[bool, typer.Option("--smart-quotes/--no-smart-quotes")] = True,
     em_dash: Annotated[bool, typer.Option("--em-dash/--no-em-dash")] = True,
     minus_sign: Annotated[bool, typer.Option("--minus/--no-minus")] = True,
     zero_width: Annotated[bool, typer.Option("--zero-width/--keep-zero-width")] = True,
@@ -115,15 +109,9 @@ def clean_run(
 @clean_app.callback()
 def clean_callback(
     ctx: typer.Context,
-    inp: Annotated[
-        str, typer.Option("--in", "-i", help="Input path or '-' for stdin")
-    ] = "-",
-    out: Annotated[
-        Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")
-    ] = None,
-    smart_quotes: Annotated[
-        bool, typer.Option("--smart-quotes/--no-smart-quotes")
-    ] = True,
+    inp: Annotated[str, typer.Option("--in", "-i", help="Input path or '-' for stdin")] = "-",
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")] = None,
+    smart_quotes: Annotated[bool, typer.Option("--smart-quotes/--no-smart-quotes")] = True,
     em_dash: Annotated[bool, typer.Option("--em-dash/--no-em-dash")] = True,
     minus_sign: Annotated[bool, typer.Option("--minus/--no-minus")] = True,
     zero_width: Annotated[bool, typer.Option("--zero-width/--keep-zero-width")] = True,
@@ -162,12 +150,8 @@ def clean_batch(
         list[Path],
         typer.Argument(help="Input files/directories", exists=True, resolve_path=True),
     ],
-    out: Annotated[
-        Path, typer.Option("--out", "-o", help="Output JSONL", resolve_path=True)
-    ] = Path("clean.jsonl"),
-    smart_quotes: Annotated[
-        bool, typer.Option("--smart-quotes/--no-smart-quotes")
-    ] = True,
+    out: Annotated[Path, typer.Option("--out", "-o", help="Output JSONL", resolve_path=True)] = Path("clean.jsonl"),
+    smart_quotes: Annotated[bool, typer.Option("--smart-quotes/--no-smart-quotes")] = True,
     em_dash: Annotated[bool, typer.Option("--em-dash/--no-em-dash")] = True,
     minus_sign: Annotated[bool, typer.Option("--minus/--no-minus")] = True,
     zero_width: Annotated[bool, typer.Option("--zero-width/--keep-zero-width")] = True,
@@ -193,27 +177,18 @@ def clean_batch(
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8", newline="\n") as fh:
         for result in iter_clean_batch(inputs, options=CleanOptions(normalize=options)):
-            fh.write(
-                json.dumps(
-                    {"text": result.text, "meta": result.meta}, ensure_ascii=False
-                )
-                + "\n"
-            )
+            fh.write(json.dumps({"text": result.text, "meta": result.meta}, ensure_ascii=False) + "\n")
     typer.echo(f"Wrote {out}")
 
 
 @app.command(help="Extract structured text blocks from HTML")
 def crawl(
-    url: Annotated[
-        Optional[str], typer.Option("--url", help="HTTP(S) URL to crawl")
-    ] = None,
+    url: Annotated[Optional[str], typer.Option("--url", help="HTTP(S) URL to crawl")] = None,
     file: Annotated[
         Optional[Path],
         typer.Option("--file", help="HTML file path", exists=True, resolve_path=True),
     ] = None,
-    depth: Annotated[
-        int, typer.Option(help="Link depth (currently informational)")
-    ] = 0,
+    depth: Annotated[int, typer.Option(help="Link depth (currently informational)")] = 0,
     render_js: Annotated[bool, typer.Option("--render-js/--no-render-js")] = False,
     allow_selector: Annotated[
         list[str],
@@ -223,9 +198,7 @@ def crawl(
         list[str],
         typer.Option("--block", help="CSS selector block-list", show_default=False),
     ] = [],
-    out: Annotated[
-        Optional[Path], typer.Option("--out", "-o", help="Output JSON path")
-    ] = None,
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output JSON path")] = None,
 ) -> None:
     if bool(url) == bool(file):
         raise typer.BadParameter("Provide exactly one of --url or --file.")
@@ -265,15 +238,9 @@ def crawl(
 @app.command(help="Queue a translation job (stub implementation)")
 def translate(
     text: Annotated[str, typer.Argument(help="Text to translate")],
-    src_lang: Annotated[
-        str, typer.Option("--src-lang", help="Source language code")
-    ] = "en",
-    tgt_lang: Annotated[
-        str, typer.Option("--tgt-lang", help="Target language code")
-    ] = "fr",
-    provider: Annotated[
-        Optional[str], typer.Option("--provider", help="Translation backend override")
-    ] = None,
+    src_lang: Annotated[str, typer.Option("--src-lang", help="Source language code")] = "en",
+    tgt_lang: Annotated[str, typer.Option("--tgt-lang", help="Target language code")] = "fr",
+    provider: Annotated[Optional[str], typer.Option("--provider", help="Translation backend override")] = None,
     glossary: Annotated[
         Optional[Path],
         typer.Option(
@@ -285,9 +252,7 @@ def translate(
             help="Glossary CSV",
         ),
     ] = None,
-    wait: Annotated[
-        bool, typer.Option("--wait/--no-wait", help="Wait for completion")
-    ] = False,
+    wait: Annotated[bool, typer.Option("--wait/--no-wait", help="Wait for completion")] = False,
 ) -> None:
     queue = get_translation_queue()
     request = TranslationRequest(
@@ -326,12 +291,8 @@ def datasets_list() -> None:
 @datasets_app.command("add", help="Register a dataset file")
 def datasets_add(
     name: Annotated[str, typer.Argument(help="Dataset name")],
-    path: Annotated[
-        Path, typer.Argument(help="Dataset file", exists=True, resolve_path=True)
-    ],
-    fmt: Annotated[
-        Optional[DatasetFormat], typer.Option("--format", help="Input format override")
-    ] = None,
+    path: Annotated[Path, typer.Argument(help="Dataset file", exists=True, resolve_path=True)],
+    fmt: Annotated[Optional[DatasetFormat], typer.Option("--format", help="Input format override")] = None,
 ) -> None:
     registry = get_dataset_registry()
     record = registry.add(name, path, fmt=fmt)
@@ -402,7 +363,6 @@ def crawl_novel(
     from sagemtl.crawl.novel_crawler import NovelCrawler
 
     # Get data directory
-    config = load_config()
     data_dir = Path.home() / ".sagemtl" / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -430,7 +390,7 @@ def crawl_novel(
             raise typer.Exit(1)
     else:
         if is_lncrawl_available():
-            typer.echo(f"URL not supported by lightnovel-crawler, using built-in crawler...")
+            typer.echo("URL not supported by lightnovel-crawler, using built-in crawler...")
         else:
             typer.echo("lightnovel-crawler not installed, using built-in crawler...")
             typer.echo("Install with: pip install 'sagemtl[lncrawl]'")
@@ -483,9 +443,7 @@ def serve(
     try:
         import uvicorn
     except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
-        raise typer.BadParameter(
-            "uvicorn is required to use the serve command"
-        ) from exc
+        raise typer.BadParameter("uvicorn is required to use the serve command") from exc
 
     api_module = "sagemtl.serve.api_v2:app" if v2 else "sagemtl.serve.api:app"
     typer.echo(f"Starting SageMTL API {'v2' if v2 else 'v1'} on http://{host}:{port}")

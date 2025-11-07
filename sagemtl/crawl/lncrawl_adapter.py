@@ -18,8 +18,8 @@ from typing import Optional
 
 # Check if lightnovel-crawler is available
 try:
-    import lncrawl
-    from lncrawl.core.app import App as LNCrawlApp
+    from lncrawl.core.app import App as LNCrawlApp  # noqa: F401
+
     LNCRAWL_AVAILABLE = True
 except ImportError:
     LNCRAWL_AVAILABLE = False
@@ -29,6 +29,7 @@ except ImportError:
 @dataclass
 class NovelDataset:
     """Novel dataset metadata."""
+
     id: str
     name: str
     url: str
@@ -79,10 +80,7 @@ def fetch_novel(
         RuntimeError: If crawling fails
     """
     if not LNCRAWL_AVAILABLE:
-        raise ImportError(
-            "lightnovel-crawler is not installed. "
-            "Install it with: pip install lightnovel-crawler"
-        )
+        raise ImportError("lightnovel-crawler is not installed. " "Install it with: pip install lightnovel-crawler")
 
     # Create output directory
     if dataset_name:
@@ -90,6 +88,7 @@ def fetch_novel(
     else:
         # Generate name from URL
         import hashlib
+
         url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
         novel_dir = output_dir / f"novel-{url_hash}"
 
@@ -122,16 +121,16 @@ def fetch_novel(
 
         # Get metadata
         novel_title = app.crawler.novel_title or "Unknown Novel"
-        novel_author = getattr(app.crawler, 'novel_author', None)
-        novel_cover = getattr(app.crawler, 'novel_cover', None)
-        novel_synopsis = getattr(app.crawler, 'novel_synopsis', None)
+        novel_author = getattr(app.crawler, "novel_author", None)
+        novel_cover = getattr(app.crawler, "novel_cover", None)
+        novel_synopsis = getattr(app.crawler, "novel_synopsis", None)
 
         # Fetch chapters
         app.crawler.download_chapters()
         app.crawler.pack_volumes()
 
         # Count chapters
-        chapter_count = len(app.crawler.chapters) if hasattr(app.crawler, 'chapters') else 0
+        chapter_count = len(app.crawler.chapters) if hasattr(app.crawler, "chapters") else 0
 
         # Calculate total words (estimate from file sizes)
         total_words = 0
@@ -195,6 +194,7 @@ def get_supported_sources() -> list[str]:
 
     try:
         from lncrawl.sources import crawler_list
+
         return [crawler.name for crawler in crawler_list]
     except (ImportError, AttributeError):
         return []
@@ -218,7 +218,7 @@ def check_url_support(url: str) -> tuple[bool, Optional[str]]:
 
         crawler = get_crawler_by_url(url)
         if crawler:
-            return True, getattr(crawler, 'name', 'Unknown')
+            return True, getattr(crawler, "name", "Unknown")
         return False, None
     except Exception:
         return False, None

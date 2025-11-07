@@ -33,9 +33,7 @@ class CrawlOptions:
     render_js: bool = False
     allow_selectors: Sequence[str] = field(default_factory=tuple)
     block_selectors: Sequence[str] = field(default_factory=tuple)
-    normalize: NormalizeOptions = field(
-        default_factory=lambda: NormalizeOptions(ensure_trailing_lf=False)
-    )
+    normalize: NormalizeOptions = field(default_factory=lambda: NormalizeOptions(ensure_trailing_lf=False))
 
 
 @dataclass(slots=True)
@@ -78,9 +76,7 @@ def _drop_boilerplate_tags(soup: BeautifulSoup) -> None:
             tag.decompose()
 
     for tag in list(soup.find_all(True)):
-        attr_values = list(_iter_attr_values(tag.get("class"))) + list(
-            _iter_attr_values(tag.get("id"))
-        )
+        attr_values = list(_iter_attr_values(tag.get("class"))) + list(_iter_attr_values(tag.get("id")))
         if any(_BOILERPLATE_RE.search(val) for val in attr_values):
             tag.decompose()
 
@@ -97,9 +93,7 @@ def _iter_candidates(soup: BeautifulSoup, allow: Sequence[str]) -> Iterator[Tag]
         return
 
     root = soup.find("article") or soup.find("main") or soup.body or soup
-    for tag in root.find_all(
-        ["h1", "h2", "h3", "h4", "h5", "h6", "p", "li"], recursive=True
-    ):
+    for tag in root.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li"], recursive=True):
         yield tag
 
 
@@ -176,9 +170,7 @@ def _strip_repeated_edges(text: str) -> str:
     return "\n".join(lines[start:end])
 
 
-def crawl_html(
-    html: str, *, source: str = "", options: CrawlOptions | None = None
-) -> CrawlResult:
+def crawl_html(html: str, *, source: str = "", options: CrawlOptions | None = None) -> CrawlResult:
     opts = options or CrawlOptions()
     cleaned_html = html.replace("\ufeff", "")
     soup = BeautifulSoup(cleaned_html, "lxml")

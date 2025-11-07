@@ -5,9 +5,9 @@ from __future__ import annotations
 import csv
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List
 
 
 @dataclass(slots=True)
@@ -35,13 +35,15 @@ def load_glossary(path: str | Path | None) -> List[GlossaryEntry]:
         data = json.loads(glossary_path.read_text(encoding="utf-8"))
         for item in data:
             if isinstance(item, dict):
-                entries.append(GlossaryEntry(
-                    source=item.get("source", ""),
-                    target=item.get("target", ""),
-                    case_sensitive=item.get("case_sensitive", True),
-                    word_boundary=item.get("word_boundary", False),
-                    notes=item.get("notes", ""),
-                ))
+                entries.append(
+                    GlossaryEntry(
+                        source=item.get("source", ""),
+                        target=item.get("target", ""),
+                        case_sensitive=item.get("case_sensitive", True),
+                        word_boundary=item.get("word_boundary", False),
+                        notes=item.get("notes", ""),
+                    )
+                )
     else:
         # Load from CSV (backward compatible)
         with glossary_path.open("r", encoding="utf-8", newline="") as fh:
@@ -56,13 +58,11 @@ def load_glossary(path: str | Path | None) -> List[GlossaryEntry]:
                 case_sensitive = row[2].lower() == "true" if len(row) > 2 else True
                 word_boundary = row[3].lower() == "true" if len(row) > 3 else False
                 notes = row[4] if len(row) > 4 else ""
-                entries.append(GlossaryEntry(
-                    source=src,
-                    target=tgt,
-                    case_sensitive=case_sensitive,
-                    word_boundary=word_boundary,
-                    notes=notes
-                ))
+                entries.append(
+                    GlossaryEntry(
+                        source=src, target=tgt, case_sensitive=case_sensitive, word_boundary=word_boundary, notes=notes
+                    )
+                )
 
     return entries
 
@@ -92,13 +92,15 @@ def save_glossary(path: str | Path, entries: List[GlossaryEntry]) -> None:
             writer = csv.writer(fh)
             writer.writerow(["Source", "Target", "Case Sensitive", "Word Boundary", "Notes"])
             for entry in entries:
-                writer.writerow([
-                    entry.source,
-                    entry.target,
-                    str(entry.case_sensitive),
-                    str(entry.word_boundary),
-                    entry.notes,
-                ])
+                writer.writerow(
+                    [
+                        entry.source,
+                        entry.target,
+                        str(entry.case_sensitive),
+                        str(entry.word_boundary),
+                        entry.notes,
+                    ]
+                )
 
 
 def apply_glossary(text: str, entries: Iterable[GlossaryEntry]) -> str:
@@ -111,7 +113,7 @@ def apply_glossary(text: str, entries: Iterable[GlossaryEntry]) -> str:
 
         if entry.word_boundary:
             # Use word boundary regex
-            pattern = r'\b' + re.escape(entry.source) + r'\b'
+            pattern = r"\b" + re.escape(entry.source) + r"\b"
             flags = 0 if entry.case_sensitive else re.IGNORECASE
             output = re.sub(pattern, entry.target, output, flags=flags)
         else:

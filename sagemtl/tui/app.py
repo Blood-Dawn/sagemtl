@@ -212,9 +212,7 @@ class SageMTLApp(App[None]):
                             )
                     with TabPane("Batch", id="tab-batch"):
                         with Vertical(classes="tool-section"):
-                            yield Label(
-                                "Batch processing tools will orchestrate directory-based crawls."
-                            )
+                            yield Label("Batch processing tools will orchestrate directory-based crawls.")
                             yield Label(
                                 "Use the CLI for now: sagemtl crawl-batch --help",
                                 classes="dimmed",
@@ -228,9 +226,7 @@ class SageMTLApp(App[None]):
                             )
                     with TabPane("Settings", id="tab-settings"):
                         with Vertical(classes="tool-section"):
-                            yield Label(
-                                "Configure API keys, storage paths, and preferences."
-                            )
+                            yield Label("Configure API keys, storage paths, and preferences.")
                             yield Label(
                                 "Configuration storage is not yet implemented in this build.",
                                 classes="dimmed",
@@ -310,10 +306,7 @@ class SageMTLApp(App[None]):
         tabs.active = tab_id
         nav = self.query_one("#nav", ListView)
         for index, item in enumerate(nav.children):
-            if (
-                isinstance(item, ListItem)
-                and self._nav_map.get(item.id or "") == tab_id
-            ):
+            if isinstance(item, ListItem) and self._nav_map.get(item.id or "") == tab_id:
                 nav.index = index
                 break
         self.update_status(f"Switched to {tab_id.removeprefix('tab-').title()} tab.")
@@ -329,21 +322,14 @@ class SageMTLApp(App[None]):
         if item.id and item.id in self._nav_map:
             self._activate_tab(self._nav_map[item.id])
 
-    def on_tabbed_content_tab_activated(
-        self, event: TabbedContent.TabActivated
-    ) -> None:
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         tab_id = event.tab.id
         nav = self.query_one("#nav", ListView)
         for index, item in enumerate(nav.children):
-            if (
-                isinstance(item, ListItem)
-                and self._nav_map.get(item.id or "") == tab_id
-            ):
+            if isinstance(item, ListItem) and self._nav_map.get(item.id or "") == tab_id:
                 nav.index = index
                 break
 
     async def on_key(self, event: events.Key) -> None:  # pragma: no cover - runtime UX
         if event.key == "f1":
-            self.log_event(
-                "Visit https://github.com/blood-dawn/sagemtl for documentation."
-            )
+            self.log_event("Visit https://github.com/blood-dawn/sagemtl for documentation.")

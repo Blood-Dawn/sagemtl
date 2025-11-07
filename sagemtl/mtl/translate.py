@@ -16,11 +16,7 @@ class _HF(_Base):
     def __init__(self, model: str, device: str):
         from transformers import pipeline
 
-        device_map = (
-            0
-            if (device == "cuda" or (device == "auto" and torch.cuda.is_available()))
-            else -1
-        )
+        device_map = 0 if (device == "cuda" or (device == "auto" and torch.cuda.is_available())) else -1
         self.pipe = pipeline("translation", model=model, device=device_map)
         self.device = "cuda" if device_map == 0 else "cpu"
 
@@ -40,13 +36,7 @@ class _CT2(_Base):
         # model is a directory path exported for CTranslate2
         self.translator = ctranslate2.Translator(
             model,
-            device=(
-                "cuda"
-                if (
-                    device == "cuda" or (device == "auto" and torch.cuda.is_available())
-                )
-                else "cpu"
-            ),
+            device=("cuda" if (device == "cuda" or (device == "auto" and torch.cuda.is_available())) else "cpu"),
         )
         # assume sentencepiece model files named src.model and tgt.model beside model dir
         # Instantiate processors and load models explicitly. Type as Any to satisfy static

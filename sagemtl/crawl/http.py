@@ -115,9 +115,7 @@ class HTTPClient:
         if origin in self._robots_parsers:
             return self._robots_parsers[origin]
 
-        robots_url = urlunparse(
-            (parsed.scheme, parsed.netloc, "/robots.txt", "", "", "")
-        )
+        robots_url = urlunparse((parsed.scheme, parsed.netloc, "/robots.txt", "", "", ""))
         parser = RobotFileParser()
         parser.set_url(robots_url)
 

@@ -4,13 +4,14 @@
 
 ## 🚀 What's New in v2
 
+- **Novel Crawler** with automatic chapter pattern detection and LNCrawl integration
 - **Modular API** under `/api/*` with organized routers
 - **Dataset Import** with drag-drop file upload (`.txt`, `.md`, `.html`, `.jsonl`, `.epub`)
 - **Novel Management** with chapter tracking and metadata
 - **Compose Pipeline** - unified Clean + Translate + Glossary workflow
-- **Real-time Jobs** with WebSocket progress streaming
+- **Real-time Jobs** with WebSocket progress streaming and detailed metrics
 - **Enhanced Glossary** with case-sensitivity and word boundaries
-- **Chapter Crawling** for extracting web novels
+- **Settings Management** - UI and API for config.toml persistence
 
 📖 **[See IMPLEMENTATION.md for complete feature list](./IMPLEMENTATION.md)**
 📘 **[Read HOWTORUN.md for detailed usage guide](./HOWTORUN.md)**
@@ -69,6 +70,19 @@ removal, selector allow/block lists and CRLF normalisation):
 
 ```bash
 sagemtl crawl --file page.html --allow "article > p" --block ".sidebar"
+```
+
+**Novel Crawling** with automatic chapter pattern detection:
+
+```bash
+# Install lightnovel-crawler (optional)
+pip install 'sagemtl[lncrawl]'
+
+# Crawl a novel - auto-detects chapter patterns
+sagemtl crawl novel https://example.com/novel/chapter-1 --start 1 --end 50 --name "my-novel"
+
+# Supported patterns: /chapter-1, /ch1/, /1/, /1.html, etc.
+# Falls back to built-in crawler if URL not supported by LNCrawl
 ```
 
 ### Translation queue
@@ -205,6 +219,24 @@ Override with:
 - `SAGEMTL_JOBS_PATH` - Jobs storage path
 - `SAGEMTL_DATA_DIR` - Dataset directory
 
+## Optional Features
+
+### Novel Crawler with LNCrawl
+
+For enhanced novel crawling with support for 600+ novel sites:
+
+```bash
+pip install 'sagemtl[lncrawl]'
+```
+
+This installs [lightnovel-crawler](https://github.com/dipu-bd/lightnovel-crawler) (GPLv3) which provides:
+- Support for RoyalRoad, Webnovel, Wuxiaworld, and 600+ other sites
+- Automatic chapter detection and metadata extraction
+- EPUB generation
+- Cover image download
+
+SageMTL will automatically use LNCrawl when available, or fall back to the built-in pattern-based crawler.
+
 ## Development
 
 ### Install for Development
@@ -213,6 +245,9 @@ Override with:
 python -m venv .venv
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -e .[dev]
+
+# Optional: Install LNCrawl for novel crawling
+pip install -e .[lncrawl]
 ```
 
 ### Run Tests
@@ -283,15 +318,21 @@ sagemtl serve --v2 --port 8000
 - `DELETE /api/datasets/{id}` - Delete dataset
 
 ### Crawl (Chapter Extraction)
+- `POST /api/crawl/novel` - Crawl novel with pattern detection (uses LNCrawl if available)
 - `POST /api/crawl/run` - Crawl chapters (async job)
 - `POST /api/crawl/extract` - Extract HTML (sync)
 
 ### Jobs (Real-time Tracking)
-- `GET /api/jobs` - List all jobs
-- `GET /api/jobs/{id}` - Get job status
+- `GET /api/jobs` - List all jobs with metadata (runtime, bytes, provider)
+- `GET /api/jobs/{id}` - Get job status with logs
 - `DELETE /api/jobs/{id}` - Cancel job
 - `POST /api/jobs/{id}/retry` - Retry failed job
 - `WebSocket /api/jobs/ws/{id}` - Real-time progress stream
+
+### Settings (Configuration Management)
+- `GET /api/settings` - Get current settings
+- `PUT /api/settings` - Update settings (persists to config.toml)
+- `POST /api/settings/reset` - Reset to defaults
 
 ### Legacy Endpoints (v1 - backward compatible)
 - `POST /clean` - Clean text

@@ -66,13 +66,9 @@ def test_module_entrypoint(tmp_path: Path):
 def test_crawl_requires_single_source(tmp_path: Path):
     html = tmp_path / "page.html"
     html.write_text("<html><body><p>hi</p></body></html>", encoding="utf-8")
-    result = runner.invoke(
-        app, ["crawl", "--file", str(html), "--url", "https://example.com"]
-    )
+    result = runner.invoke(app, ["crawl", "--file", str(html), "--url", "https://example.com"])
     assert result.exit_code != 0
-    assert (
-        "Provide exactly one" in result.stdout or "Provide exactly one" in result.stderr
-    )
+    assert "Provide exactly one" in result.stdout or "Provide exactly one" in result.stderr
 
 
 def test_crawl_file_uses_extract(tmp_path: Path):
@@ -88,9 +84,7 @@ def test_clean_batch_command(tmp_path: Path):
     text_file = tmp_path / "doc.txt"
     text_file.write_text("“Hello”", encoding="utf-8")
     out_path = tmp_path / "clean.jsonl"
-    result = runner.invoke(
-        app, ["clean", "batch", str(text_file), "--out", str(out_path)]
-    )
+    result = runner.invoke(app, ["clean", "batch", str(text_file), "--out", str(out_path)])
     assert result.exit_code == 0
     assert out_path.exists()
     lines = out_path.read_text(encoding="utf-8").splitlines()
