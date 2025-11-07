@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -139,7 +138,7 @@ def test_invalid_settings(client, test_config_dir, monkeypatch):
     monkeypatch.setenv("SAGEMTL_CONFIG", str(config_file))
 
     # Try to set invalid thread_count
-    response = client.put(
+    _ = client.put(
         "/api/settings",
         json={"thread_count": -1},  # Invalid: must be >= 1
     )
