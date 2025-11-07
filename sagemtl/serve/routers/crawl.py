@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sagemtl.clean.text_normalize import NormalizeOptions
 from sagemtl.crawl.http import fetch_text
 from sagemtl.crawl.pipeline import CrawlOptions, crawl_html
+from sagemtl.crawl.novel_crawler import NovelCrawler
 from sagemtl.jobs.store import JobRecord, get_job_store
 
 router = APIRouter(prefix="/api/crawl", tags=["crawl"])
@@ -258,3 +259,141 @@ def extract_html(request: ExtractRequest) -> CrawlResult:
     ]
 
     return CrawlResult(source=source, meta=result.meta, blocks=blocks)
+
+
+class NovelCrawlRequest(BaseModel):
+    """Request for novel chapter crawling with automatic pattern detection."""
+    start_url: str
+    start_chapter: int = 1
+    end_chapter: int = 10
+    allow_selectors: List[str] = Field(default_factory=lambda: ["article", "main", ".chapter-content", ".chapter"])
+    block_selectors: List[str] = Field(default_factory=lambda: ["nav", "footer", ".sidebar", ".ads", ".navigation"])
+    dataset_name: Optional[str] = None
+    max_concurrent: int = Field(default=3, ge=1, le=10)
+
+
+async def novel_crawl_worker(job_id: str, request: NovelCrawlRequest):
+    """Background worker for novel crawling with pattern detection."""
+    store = get_job_store()
+    job = store.get(job_id)
+
+    if not job:
+        return
+
+    try:
+        import time
+        from sagemtl.serve.routers.datasets import get_data_dir
+
+        start_time = time.time()
+        job.status = "running"
+        job.meta["start_time"] = start_time
+        store.upsert(job)
+        store.append_log(job_id, f"Starting novel crawl from {request.start_url}")
+
+        # Create crawler
+        crawler = NovelCrawler(max_concurrent=request.max_concurrent)
+
+        # Crawl novel
+        store.append_log(job_id, f"Detecting chapter pattern and crawling chapters {request.start_chapter}-{request.end_chapter}")
+        novel_info = crawler.crawl_novel(
+            start_url=request.start_url,
+            start_chapter=request.start_chapter,
+            end_chapter=request.end_chapter,
+            allow_selectors=request.allow_selectors,
+            block_selectors=request.block_selectors,
+            dataset_name=request.dataset_name,
+        )
+
+        # Save to dataset
+        data_dir = get_data_dir()
+        dataset_path = crawler.save_to_dataset(novel_info, data_dir, format="txt")
+        dataset_name = dataset_path.name
+
+        # Calculate metrics
+        end_time = time.time()
+        runtime_ms = (end_time - start_time) * 1000
+        total_words = sum(ch.word_count for ch in novel_info.chapters)
+
+        # Update job with success
+        job.status = "done"
+        job.result = {
+            "dataset_id": dataset_name,
+            "dataset_path": str(dataset_path),
+            "novel_title": novel_info.title,
+            "author": novel_info.author,
+            "chapters_extracted": len(novel_info.chapters),
+            "total_words": total_words,
+            "cover_url": novel_info.cover_url,
+        }
+        job.meta["runtime_ms"] = round(runtime_ms, 2)
+        job.meta["chapters_extracted"] = len(novel_info.chapters)
+        job.meta["total_words"] = total_words
+
+        store.append_log(job_id, f"✓ Crawled {len(novel_info.chapters)} chapters ({total_words:,} words)")
+        store.append_log(job_id, f"✓ Saved to dataset: {dataset_name}")
+        store.append_log(job_id, f"✓ Completed in {runtime_ms:.0f}ms")
+        store.upsert(job)
+
+    except Exception as exc:
+        end_time = time.time()
+        runtime_ms = (end_time - start_time) * 1000
+        job.status = "failed"
+        job.error = str(exc)
+        job.meta["runtime_ms"] = round(runtime_ms, 2)
+        store.append_log(job_id, f"✗ Error: {exc}")
+        store.upsert(job)
+
+
+@router.post("/novel", response_model=CrawlChapterResponse)
+async def crawl_novel(request: NovelCrawlRequest) -> CrawlChapterResponse:
+    """
+    Crawl a novel with automatic chapter pattern detection.
+
+    This endpoint:
+    1. Detects chapter URL patterns automatically
+    2. Crawls multiple chapters sequentially
+    3. Extracts chapter titles and content
+    4. Saves as a novel-type dataset with metadata
+    5. Returns job ID for tracking
+
+    The crawler supports common patterns like:
+    - /chapter-1, /chapter-2, ...
+    - /1/, /2/, ...
+    - /ch1/, /ch2/, ...
+    - /1.html, /2.html, ...
+
+    Track progress via WebSocket: /api/jobs/ws/{job_id}
+    """
+    # Create job
+    job_id = str(uuid.uuid4())
+    store = get_job_store()
+
+    job = JobRecord(
+        id=job_id,
+        type="novel_crawl",
+        status="queued",
+        meta={
+            "start_url": request.start_url,
+            "start_chapter": request.start_chapter,
+            "end_chapter": request.end_chapter,
+            "expected_chapters": request.end_chapter - request.start_chapter + 1,
+        },
+        payload={
+            "start_url": request.start_url,
+            "start_chapter": request.start_chapter,
+            "end_chapter": request.end_chapter,
+            "dataset_name": request.dataset_name,
+        },
+    )
+
+    store.upsert(job)
+    store.append_log(job_id, f"Novel crawl job queued")
+
+    # Start background task
+    asyncio.create_task(novel_crawl_worker(job_id, request))
+
+    return CrawlChapterResponse(
+        job_id=job_id,
+        status="queued",
+        message=f"Novel crawl job queued. Expected to crawl {request.end_chapter - request.start_chapter + 1} chapters. Track at /api/jobs/{job_id}"
+    )
