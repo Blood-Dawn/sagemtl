@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -165,10 +166,15 @@ async def crawl_chapters_worker(job_id: str, request: CrawlChapterRequest):
         store.upsert(job)
 
     except Exception as exc:
+        tb = traceback.format_exc()
         job.status = "failed"
-        job.error = str(exc)
+        job.error = f"{exc}\n\nStack trace:\n{tb}"
         job.log.append(f"Error: {exc}")
+        job.log.append(f"URL: {request.start_url}")
+        job.log.append(f"Stack trace:\n{tb}")
         store.upsert(job)
+        # Write log file on failure
+        store.write_log_file(job_id)
 
 
 @router.post("/run", response_model=CrawlChapterResponse)
@@ -378,11 +384,16 @@ async def novel_crawl_worker(job_id: str, request: NovelCrawlRequest):
 
         end_time = time.time()
         runtime_ms = (end_time - start_time) * 1000
+        tb = traceback.format_exc()
         job.status = "failed"
-        job.error = str(exc)
+        job.error = f"{exc}\n\nStack trace:\n{tb}"
         job.meta["runtime_ms"] = round(runtime_ms, 2)
         store.append_log(job_id, f"✗ Error: {exc}")
+        store.append_log(job_id, f"✗ URL: {request.start_url}")
+        store.append_log(job_id, f"✗ Stack trace:\n{tb}")
         store.upsert(job)
+        # Write log file on failure
+        store.write_log_file(job_id)
 
 
 @router.post("/novel", response_model=CrawlChapterResponse)

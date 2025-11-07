@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from queue import Queue, Empty
 import threading
 import time
+import traceback
 import uuid
 from typing import Dict, Iterable, Optional
 
@@ -107,17 +108,25 @@ class TranslationQueue:
                 runtime_ms = (end_time - start_time) * 1000
                 record.meta["runtime_ms"] = round(runtime_ms, 2)
                 record.status = "failed"
-                record.error = str(exc)
+                tb = traceback.format_exc()
+                record.error = f"{exc}\n\nStack trace:\n{tb}"
                 self.store.append_log(job_id, f"Failed: {exc}")
+                self.store.append_log(job_id, f"Stack trace:\n{tb}")
                 self.store.upsert(record)
+                # Write log file on failure
+                self.store.write_log_file(job_id)
             except Exception as exc:  # pragma: no cover - safety net
                 end_time = time.time()
                 runtime_ms = (end_time - start_time) * 1000
                 record.meta["runtime_ms"] = round(runtime_ms, 2)
                 record.status = "failed"
-                record.error = str(exc)
+                tb = traceback.format_exc()
+                record.error = f"{exc}\n\nStack trace:\n{tb}"
                 self.store.append_log(job_id, f"Error: {exc}")
+                self.store.append_log(job_id, f"Stack trace:\n{tb}")
                 self.store.upsert(record)
+                # Write log file on failure
+                self.store.write_log_file(job_id)
             finally:
                 self._queue.task_done()
 

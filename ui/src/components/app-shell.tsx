@@ -13,18 +13,19 @@ import { LogConsole } from '@/components/log-console';
 import { mockLogs } from '@/mocks/logs';
 
 const breadcrumbs: Record<string, string[]> = {
-  '/clean': ['Workspace', 'Clean'],
-  '/crawl': ['Workspace', 'Crawl'],
-  '/translate': ['Workspace', 'Translate'],
+  '/compose': ['Workflow', 'Compose'],
+  '/crawl': ['Workflow', 'Crawl'],
+  '/clean': ['Workflow', 'Clean'],
+  '/translate': ['Workflow', 'Translate'],
   '/datasets': ['Data', 'Datasets'],
   '/jobs': ['Data', 'Jobs'],
-  '/settings': ['Admin', 'Settings'],
+  '/settings': ['Settings'],
 };
 
 export function AppShell() {
   const location = useLocation();
-  const path = location.pathname === '/' ? '/clean' : location.pathname;
-  const crumb = breadcrumbs[path] ?? ['Workspace'];
+  const path = location.pathname === '/' ? '/compose' : location.pathname;
+  const crumb = breadcrumbs[path] ?? ['Workflow'];
   const { theme, toggleTheme } = useTheme();
   const { inspectorOpen, toggleInspector, consoleCollapsed, toggleConsole } = useLayoutStore();
   const [logs, setLogs] = useState<string[]>(mockLogs.slice(0, 2));

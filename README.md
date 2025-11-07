@@ -170,8 +170,73 @@ Visit `http://localhost:5173` to access the web interface. The UI provides pages
 - **/crawl** - HTML extraction with CSS selector configuration
 - **/translate** - Translation job management with progress tracking
 - **/datasets** - Dataset registry with table view
-- **/jobs** - Job history and monitoring
+- **/jobs** - Job history and monitoring with customizable grid layout
 - **/settings** - Configuration editor
+
+### Grid Layout System
+
+The Jobs page (and other pages) support **drag-and-drop rearrangeable widgets** using [react-grid-layout](https://github.com/react-grid-layout/react-grid-layout). Users can customize their workspace by dragging widgets to reposition them and resizing them to fit their workflow.
+
+**User Features:**
+- **Drag widgets** - Click and drag any widget by its title bar (indicated by 3-dot handle)
+- **Resize widgets** - Drag the bottom-right corner of any widget to resize
+- **Lock/unlock layout** - Toggle the lock button to prevent accidental changes
+- **Reset to defaults** - Click the reset button to restore the original layout
+- **Persistent layouts** - Changes are automatically saved to browser localStorage
+
+**Developer Usage:**
+
+To add grid layout to a page, use the `LayoutManager` component:
+
+```tsx
+import { LayoutManager, Widget } from '@/components/layout-manager';
+
+// Define default layout for your widgets
+const defaultLayout = [
+  { i: 'widget1', x: 0, y: 0, w: 6, h: 2, minW: 3, minH: 2 },
+  { i: 'widget2', x: 6, y: 0, w: 6, h: 2, minW: 3, minH: 2 },
+  { i: 'widget3', x: 0, y: 2, w: 12, h: 4, minW: 6, minH: 3 },
+];
+
+function MyPage() {
+  return (
+    <LayoutManager
+      layoutKey="myPage"
+      defaultLayout={defaultLayout}
+      rowHeight={100}
+      cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+    >
+      <Widget key="widget1" id="widget1" title="Statistics">
+        {/* Your content here */}
+      </Widget>
+      <Widget key="widget2" id="widget2" title="Controls">
+        {/* Your content here */}
+      </Widget>
+      <Widget key="widget3" id="widget3" title="Data Table">
+        {/* Your content here */}
+      </Widget>
+    </LayoutManager>
+  );
+}
+```
+
+**Layout Configuration:**
+- `i` - Unique widget identifier (must match Widget's `key` and `id`)
+- `x` - Column position (0-based, max = cols value)
+- `y` - Row position (0-based)
+- `w` - Width in columns (1-12 for lg breakpoint)
+- `h` - Height in rows
+- `minW`, `minH` - Minimum widget dimensions
+- `maxW`, `maxH` - Maximum widget dimensions (optional)
+
+**Responsive Breakpoints:**
+- `lg` (1200px+) - 12 columns
+- `md` (996px+) - 10 columns
+- `sm` (768px+) - 6 columns
+- `xs` (480px+) - 4 columns
+- `xxs` (<480px) - 2 columns
+
+**Storage:** Layouts are persisted to `localStorage` with keys like `sagemtl.layout.jobsPage`. If storage is corrupted or empty, the default layout is used.
 
 ## Configuration
 
@@ -264,6 +329,22 @@ ruff check sagemtl/
 ruff format sagemtl/
 pre-commit run --all-files
 ```
+
+### VS Code Configuration
+
+The project includes a `.vscode/settings.json` file with recommended settings:
+
+- **Terminal Profile**: Default terminal is set to PowerShell on Windows, bash on Linux, zsh on macOS
+- **Python Formatting**: Auto-format on save with Black (120 char line length)
+- **Linting**: Ruff linting enabled
+- **Import Organization**: Auto-organize imports on save
+
+**To change the default terminal profile**:
+1. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS)
+2. Search for **"Terminal: Select Default Profile"**
+3. Choose your preferred shell (PowerShell, Command Prompt, Git Bash, WSL, etc.)
+
+The setting is stored in `.vscode/settings.json` under `terminal.integrated.defaultProfile.windows`.
 
 ### Build Documentation
 

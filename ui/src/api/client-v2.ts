@@ -127,8 +127,12 @@ export interface JobResponse {
   result?: Record<string, unknown>;
   error?: string;
   log: string[];
+  log_path?: string;
   progress?: number;
 }
+
+// Alias for backward compatibility
+export type JobRecord = JobResponse;
 
 export interface AppSettings {
   newline_mode: string;
@@ -315,6 +319,16 @@ export class SageMTLClient {
 
     if (!response.ok) {
       throw new Error(`Get job failed: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async getJobLog(jobId: string): Promise<{ log: string; source: string; path?: string }> {
+    const response = await fetch(`${this.baseUrl}/api/jobs/${jobId}/log`);
+
+    if (!response.ok) {
+      throw new Error(`Get job log failed: ${response.statusText}`);
     }
 
     return response.json();
