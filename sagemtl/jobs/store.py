@@ -32,6 +32,7 @@ class JobRecord:
     result: Dict[str, object] | None = None
     error: str | None = None
     log: List[str] = field(default_factory=list)
+    log_path: str | None = None
 
     def to_dict(self) -> Dict[str, object]:
         return asdict(self)
@@ -49,6 +50,7 @@ class JobRecord:
             result=dict(data["result"]) if data.get("result") else None,
             error=str(data.get("error")) if data.get("error") else None,
             log=list(data.get("log", [])),
+            log_path=str(data.get("log_path")) if data.get("log_path") else None,
         )
 
 
@@ -104,6 +106,41 @@ class JobStore:
             record.log.append(message)
             record.updated_at = _now()
             self._flush()
+
+    def write_log_file(self, job_id: str) -> Path | None:
+        """Write job log to file in ~/.sagemtl/jobs/{job_id}/log.txt."""
+        with self._lock:
+            record = self._jobs.get(job_id)
+            if not record:
+                return None
+
+            # Create job directory
+            jobs_dir = DEFAULT_DIR / "jobs" / job_id
+            jobs_dir.mkdir(parents=True, exist_ok=True)
+
+            # Write log file
+            log_file = jobs_dir / "log.txt"
+            log_content = "\n".join(record.log)
+
+            # Add error info if present
+            if record.error:
+                log_content += f"\n\n=== ERROR ===\n{record.error}\n"
+
+            # Add timestamp
+            log_content += "\n\n=== Job Info ===\n"
+            log_content += f"Job ID: {record.id}\n"
+            log_content += f"Type: {record.type}\n"
+            log_content += f"Status: {record.status}\n"
+            log_content += f"Created: {record.created_at}\n"
+            log_content += f"Updated: {record.updated_at}\n"
+
+            log_file.write_text(log_content, encoding="utf-8", newline="\n")
+
+            # Update record with log path
+            record.log_path = str(log_file)
+            self._flush()
+
+            return log_file
 
     def purge(self, *, statuses: Iterable[str] | None = None) -> List[str]:
         keep_statuses = set(statuses) if statuses else {"queued", "running"}

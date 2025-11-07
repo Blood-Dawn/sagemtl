@@ -265,6 +265,22 @@ ruff format sagemtl/
 pre-commit run --all-files
 ```
 
+### VS Code Configuration
+
+The project includes a `.vscode/settings.json` file with recommended settings:
+
+- **Terminal Profile**: Default terminal is set to PowerShell on Windows, bash on Linux, zsh on macOS
+- **Python Formatting**: Auto-format on save with Black (120 char line length)
+- **Linting**: Ruff linting enabled
+- **Import Organization**: Auto-organize imports on save
+
+**To change the default terminal profile**:
+1. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS)
+2. Search for **"Terminal: Select Default Profile"**
+3. Choose your preferred shell (PowerShell, Command Prompt, Git Bash, WSL, etc.)
+
+The setting is stored in `.vscode/settings.json` under `terminal.integrated.defaultProfile.windows`.
+
 ### Build Documentation
 
 ```bash

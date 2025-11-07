@@ -23,6 +23,7 @@ class JobResponse(BaseModel):
     result: Optional[dict[str, object]] = None
     error: Optional[str] = None
     log: list[str]
+    log_path: Optional[str] = None
     progress: Optional[float] = None
 
 
@@ -44,6 +45,7 @@ def list_jobs() -> list[JobResponse]:
                 result=job.result,
                 error=job.error,
                 log=job.log,
+                log_path=job.log_path,
                 progress=job.meta.get("progress") if hasattr(job, "meta") else None,
             )
         )
@@ -70,6 +72,7 @@ def get_job(job_id: str) -> JobResponse:
         result=job.result,
         error=job.error,
         log=job.log,
+        log_path=job.log_path,
         progress=job.meta.get("progress") if hasattr(job, "meta") else None,
     )
 
@@ -89,6 +92,33 @@ def cancel_job(job_id: str) -> dict[str, str]:
         store.upsert(job)
 
     return {"status": "cancelled", "job_id": job_id}
+
+
+@router.get("/{job_id}/log", response_model=dict[str, str])
+def get_job_log(job_id: str) -> dict[str, str]:
+    """Get the log file content for a job."""
+    from pathlib import Path
+
+    store = get_job_store()
+    job = store.get(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+    if not job.log_path:
+        # If no log file exists, return the in-memory log
+        return {"log": "\n".join(job.log), "source": "memory"}
+
+    try:
+        log_file = Path(job.log_path)
+        if not log_file.exists():
+            # Fallback to in-memory log
+            return {"log": "\n".join(job.log), "source": "memory"}
+
+        log_content = log_file.read_text(encoding="utf-8")
+        return {"log": log_content, "source": "file", "path": str(log_file)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read log file: {exc}")
 
 
 @router.websocket("/ws/{job_id}")
