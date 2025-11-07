@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { RefreshCw, Play, X, Eye, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RefreshCw, Play, X, Eye, Clock, CheckCircle2, XCircle, Loader2, BarChart3, TrendingUp } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -14,6 +14,7 @@ import { useToast } from '@/components/toaster';
 import { apiClient } from '@/api/client-v2';
 import type { JobRecord } from '@/api/client-v2';
 import { useJobWebSocket } from '@/hooks/use-job-websocket';
+import { LayoutManager, Widget } from '@/components/layout-manager';
 
 type JobWithProgress = JobRecord & {
   progress?: number;
@@ -197,30 +198,94 @@ export function JobsPage() {
     },
   ];
 
+  // Calculate job statistics
+  const jobStats = useMemo(() => {
+    const total = jobs.length;
+    const done = jobs.filter((j) => j.status === 'done').length;
+    const failed = jobs.filter((j) => j.status === 'failed').length;
+    const running = jobs.filter((j) => j.status === 'running').length;
+    const queued = jobs.filter((j) => j.status === 'queued').length;
+    const successRate = total > 0 ? ((done / total) * 100).toFixed(1) : '0';
+
+    return { total, done, failed, running, queued, successRate };
+  }, [jobs]);
+
+  // Default layout for the Jobs page
+  const defaultLayout = [
+    { i: 'stats', x: 0, y: 0, w: 12, h: 2, minH: 2, minW: 6 },
+    { i: 'controls', x: 0, y: 2, w: 12, h: 1, minH: 1, minW: 6 },
+    { i: 'jobs-table', x: 0, y: 3, w: 12, h: 6, minH: 4, minW: 8 },
+  ];
+
   return (
-    <div className="space-y-6 p-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Jobs ({jobs.length})</CardTitle>
-          <div className="flex gap-2">
-            <Button
-              variant={autoRefresh ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setAutoRefresh(!autoRefresh)}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
-              {autoRefresh ? 'Auto-refresh' : 'Manual'}
-            </Button>
-            <Button variant="outline" size="sm" onClick={loadJobs}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
-            </Button>
+    <div className="h-full p-6">
+      <LayoutManager layoutKey="jobsPage" defaultLayout={defaultLayout} rowHeight={80}>
+        {/* Statistics Widget */}
+        <Widget key="stats" id="stats" title="Job Statistics">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="space-y-1">
+              <p className="text-2xl font-bold text-foreground">{jobStats.total}</p>
+              <p className="text-xs text-muted-foreground">Total Jobs</p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <p className="text-2xl font-bold text-foreground">{jobStats.done}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">Completed</p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <XCircle className="h-4 w-4 text-destructive" />
+                <p className="text-2xl font-bold text-foreground">{jobStats.failed}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">Failed</p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                <p className="text-2xl font-bold text-foreground">{jobStats.running}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">Running</p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                <p className="text-2xl font-bold text-foreground">{jobStats.successRate}%</p>
+              </div>
+              <p className="text-xs text-muted-foreground">Success Rate</p>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        </Widget>
+
+        {/* Controls Widget */}
+        <Widget key="controls" id="controls" title="Actions">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Manage and monitor your jobs. Drag widgets to rearrange the layout.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant={autoRefresh ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setAutoRefresh(!autoRefresh)}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
+                {autoRefresh ? 'Auto' : 'Manual'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={loadJobs}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </Widget>
+
+        {/* Jobs Table Widget */}
+        <Widget key="jobs-table" id="jobs-table" title={`All Jobs (${jobs.length})`}>
           <DataTable columns={jobColumns} data={jobs} />
-        </CardContent>
-      </Card>
+        </Widget>
+      </LayoutManager>
 
       {/* Job Detail Dialog */}
       {selectedJob && (
