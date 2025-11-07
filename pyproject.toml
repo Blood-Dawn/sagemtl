@@ -28,6 +28,7 @@ exclude = ["data*", "tests*"]
 
 [project.optional-dependencies]
 crawl = ["beautifulsoup4>=4.12", "lxml>=5.3", "selectolax>=0.3.21", "httpx[http2]>=0.25"]
+lncrawl = ["lightnovel-crawler>=3.0.0"]
 docs  = ["mkdocs", "mkdocs-material", "mkdocstrings[python]", "pymdown-extensions"]
 serve = ["fastapi>=0.109", "uvicorn[standard]>=0.27"]
 tui = ["textual>=0.44"]
