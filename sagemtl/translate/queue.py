@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from queue import Queue, Empty
 import threading
+import time
 import uuid
 from typing import Dict, Iterable, Optional
 
@@ -63,8 +64,13 @@ class TranslationQueue:
             record = self.store.get(job_id)
             if not record:
                 continue
+
+            # Track start time
+            start_time = time.time()
             record.status = "running"
+            record.meta["start_time"] = start_time
             self.store.upsert(record)
+
             try:
                 payload = record.payload
                 provider = get_provider(str(payload.get("provider")))
@@ -76,17 +82,42 @@ class TranslationQueue:
                 glossary_entries = load_glossary(payload.get("glossary"))
                 if glossary_entries:
                     text = apply_glossary(text, glossary_entries)
+
+                # Calculate metrics
+                end_time = time.time()
+                runtime_ms = (end_time - start_time) * 1000
+                output_bytes = len(text.encode('utf-8'))
+                input_bytes = len(str(payload.get("text", "")).encode('utf-8'))
+
+                # Store result with metadata
                 record.result = {"text": text}
+                record.meta["runtime_ms"] = round(runtime_ms, 2)
+                record.meta["input_bytes"] = input_bytes
+                record.meta["output_bytes"] = output_bytes
+                record.meta["provider"] = str(payload.get("provider"))
+                record.meta["src_lang"] = str(payload.get("src_lang", ""))
+                record.meta["tgt_lang"] = str(payload.get("tgt_lang", ""))
+
                 record.status = "done"
                 record.error = None
+                self.store.append_log(job_id, f"Translation completed in {runtime_ms:.2f}ms")
+                self.store.append_log(job_id, f"Input: {input_bytes} bytes → Output: {output_bytes} bytes")
                 self.store.upsert(record)
             except NotConfigured as exc:
+                end_time = time.time()
+                runtime_ms = (end_time - start_time) * 1000
+                record.meta["runtime_ms"] = round(runtime_ms, 2)
                 record.status = "failed"
                 record.error = str(exc)
+                self.store.append_log(job_id, f"Failed: {exc}")
                 self.store.upsert(record)
             except Exception as exc:  # pragma: no cover - safety net
+                end_time = time.time()
+                runtime_ms = (end_time - start_time) * 1000
+                record.meta["runtime_ms"] = round(runtime_ms, 2)
                 record.status = "failed"
                 record.error = str(exc)
+                self.store.append_log(job_id, f"Error: {exc}")
                 self.store.upsert(record)
             finally:
                 self._queue.task_done()

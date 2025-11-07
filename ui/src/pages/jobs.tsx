@@ -340,13 +340,62 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
           </div>
 
           {/* Metadata */}
-          {liveJob.metadata && Object.keys(liveJob.metadata).length > 0 && (
+          {liveJob.meta && Object.keys(liveJob.meta).length > 0 && (
             <div>
-              <p className="text-sm font-medium text-muted-foreground mb-2">Metadata</p>
-              <ScrollArea className="max-h-32 rounded-lg border border-border/50 bg-muted/20 p-3">
-                <pre className="text-xs font-mono">
-                  {JSON.stringify(liveJob.metadata, null, 2)}
-                </pre>
+              <p className="text-sm font-medium text-muted-foreground mb-2">Job Metrics</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {liveJob.meta.runtime_ms && (
+                  <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Runtime</p>
+                    <p className="text-sm font-medium">{liveJob.meta.runtime_ms} ms</p>
+                  </div>
+                )}
+                {liveJob.meta.input_bytes !== undefined && (
+                  <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Input Size</p>
+                    <p className="text-sm font-medium">{(liveJob.meta.input_bytes as number / 1024).toFixed(1)} KB</p>
+                  </div>
+                )}
+                {liveJob.meta.output_bytes !== undefined && (
+                  <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Output Size</p>
+                    <p className="text-sm font-medium">{(liveJob.meta.output_bytes as number / 1024).toFixed(1)} KB</p>
+                  </div>
+                )}
+                {liveJob.meta.provider && (
+                  <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Provider</p>
+                    <p className="text-sm font-medium capitalize">{liveJob.meta.provider as string}</p>
+                  </div>
+                )}
+              </div>
+              {Object.keys(liveJob.meta).length > 4 && (
+                <details className="mt-2">
+                  <summary className="text-xs text-muted-foreground cursor-pointer hover:underline">
+                    Show all metadata
+                  </summary>
+                  <ScrollArea className="max-h-32 mt-2 rounded-lg border border-border/50 bg-muted/20 p-3">
+                    <pre className="text-xs font-mono">
+                      {JSON.stringify(liveJob.meta, null, 2)}
+                    </pre>
+                  </ScrollArea>
+                </details>
+              )}
+            </div>
+          )}
+
+          {/* Logs */}
+          {liveJob.log && liveJob.log.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-muted-foreground mb-2">Logs ({liveJob.log.length})</p>
+              <ScrollArea className="max-h-48 rounded-lg border border-border/50 bg-muted/20 p-3">
+                <div className="space-y-1">
+                  {liveJob.log.map((line, idx) => (
+                    <div key={idx} className="text-xs font-mono text-muted-foreground">
+                      <span className="text-primary/70">[{idx + 1}]</span> {line}
+                    </div>
+                  ))}
+                </div>
               </ScrollArea>
             </div>
           )}
