@@ -16,14 +16,7 @@ export const navSections: NavSection[] = [
     label: 'Workflow',
     items: [
       { label: 'Compose', icon: Layers, to: '/compose' },
-    ],
-  },
-  {
-    label: 'Core',
-    items: [
-      { label: 'Clean', icon: Sparkles, to: '/clean' },
       { label: 'Crawl', icon: Search, to: '/crawl' },
-      { label: 'Translate', icon: Globe2, to: '/translate' },
     ],
   },
   {

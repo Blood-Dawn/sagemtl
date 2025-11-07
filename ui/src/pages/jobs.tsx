@@ -9,6 +9,7 @@ import { DataTable } from '@/components/data-table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/toaster';
 import { apiClient } from '@/api/client-v2';
 import type { JobRecord } from '@/api/client-v2';
@@ -243,6 +244,8 @@ type JobDetailDialogProps = {
 
 function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogProps) {
   const [liveJob, setLiveJob] = useState<JobWithProgress>(job);
+  const [fullLog, setFullLog] = useState<string | null>(null);
+  const [isLoadingLog, setIsLoadingLog] = useState(false);
   const { push } = useToast();
 
   // WebSocket connection for real-time updates
@@ -282,6 +285,28 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
     },
   });
 
+  // Load full log file
+  const loadFullLog = async () => {
+    if (!liveJob.log_path && liveJob.status !== 'failed') {
+      return;
+    }
+
+    setIsLoadingLog(true);
+    try {
+      const logData = await apiClient.getJobLog(liveJob.id);
+      setFullLog(logData.log);
+    } catch (error) {
+      console.error('Failed to load job log:', error);
+      push({
+        title: 'Failed to load log',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingLog(false);
+    }
+  };
+
   const progress = liveJob.progress !== undefined ? liveJob.progress * 100 : 0;
 
   return (
@@ -304,9 +329,18 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
 
         <Separator />
 
-        <div className="space-y-4">
-          {/* Job Info */}
-          <div className="grid grid-cols-2 gap-4">
+        <Tabs defaultValue="general" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="logs">
+              Logs {liveJob.log_path && <Badge variant="secondary" className="ml-2 h-4 text-[10px]">File</Badge>}
+            </TabsTrigger>
+            <TabsTrigger value="result">Result</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="general" className="space-y-4 mt-4">
+            {/* Job Info */}
+            <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Type</p>
               <Badge variant="secondary" className="mt-1 capitalize">
@@ -384,41 +418,18 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
             </div>
           )}
 
-          {/* Logs */}
-          {liveJob.log && liveJob.log.length > 0 && (
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-2">Logs ({liveJob.log.length})</p>
-              <ScrollArea className="max-h-48 rounded-lg border border-border/50 bg-muted/20 p-3">
-                <div className="space-y-1">
-                  {liveJob.log.map((line, idx) => (
-                    <div key={idx} className="text-xs font-mono text-muted-foreground">
-                      <span className="text-primary/70">[{idx + 1}]</span> {line}
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>
-          )}
-
-          {/* Result (if completed) */}
-          {liveJob.result && (
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-2">Result</p>
-              <ScrollArea className="max-h-48 rounded-lg border border-border/50 bg-muted/20 p-3">
-                <pre className="text-xs font-mono">
-                  {JSON.stringify(liveJob.result, null, 2)}
-                </pre>
-              </ScrollArea>
-            </div>
-          )}
-
-          {/* Error (if failed) */}
+          {/* Error (if failed) - shown in General tab */}
           {liveJob.error && (
             <div>
               <p className="text-sm font-medium text-destructive mb-2">Error</p>
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
-                <p className="text-xs font-mono text-destructive">{liveJob.error}</p>
+                <p className="text-xs font-mono text-destructive whitespace-pre-wrap">{liveJob.error.split('\n\n')[0]}</p>
               </div>
+              {liveJob.log_path && (
+                <Button variant="outline" size="sm" className="mt-2" onClick={loadFullLog}>
+                  View Full Log File
+                </Button>
+              )}
             </div>
           )}
 
@@ -435,9 +446,90 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
               </ScrollArea>
             </div>
           )}
+          </TabsContent>
 
-          {/* Actions */}
-          <div className="flex gap-2 justify-end">
+          {/* Logs Tab */}
+          <TabsContent value="logs" className="space-y-4 mt-4">
+            {/* In-Memory Logs */}
+            {liveJob.log && liveJob.log.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-muted-foreground mb-2">In-Memory Logs ({liveJob.log.length})</p>
+                <ScrollArea className="max-h-64 rounded-lg border border-border/50 bg-muted/20 p-3">
+                  <div className="space-y-1">
+                    {liveJob.log.map((line, idx) => (
+                      <div key={idx} className="text-xs font-mono text-muted-foreground">
+                        <span className="text-primary/70">[{idx + 1}]</span> {line}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+
+            {/* Full Log File */}
+            {liveJob.log_path && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Log File {liveJob.status === 'failed' && <Badge variant="destructive" className="ml-2">Failed</Badge>}
+                  </p>
+                  {!fullLog && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={loadFullLog}
+                      disabled={isLoadingLog}
+                    >
+                      {isLoadingLog ? (
+                        <>
+                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        'Load Full Log'
+                      )}
+                    </Button>
+                  )}
+                </div>
+                {fullLog && (
+                  <ScrollArea className="max-h-96 rounded-lg border border-border/50 bg-muted/20 p-3">
+                    <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap">{fullLog}</pre>
+                  </ScrollArea>
+                )}
+                {!fullLog && !isLoadingLog && (
+                  <div className="rounded-lg border border-border/50 bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                    Click "Load Full Log" to view the complete log file with stack traces
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!liveJob.log_path && (!liveJob.log || liveJob.log.length === 0) && (
+              <div className="rounded-lg border border-border/50 bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                No logs available for this job
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Result Tab */}
+          <TabsContent value="result" className="space-y-4 mt-4">
+            {liveJob.result ? (
+              <ScrollArea className="max-h-96 rounded-lg border border-border/50 bg-muted/20 p-3">
+                <pre className="text-xs font-mono">
+                  {JSON.stringify(liveJob.result, null, 2)}
+                </pre>
+              </ScrollArea>
+            ) : (
+              <div className="rounded-lg border border-border/50 bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                {liveJob.status === 'done' ? 'No result data available' : 'Job has not completed yet'}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* Actions */}
+        <Separator />
+        <div className="flex gap-2 justify-end">
             {(liveJob.status === 'running' || liveJob.status === 'queued') && (
               <Button
                 variant="destructive"
@@ -465,7 +557,6 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
             <Button variant="outline" onClick={onClose}>
               Close
             </Button>
-          </div>
         </div>
       </DialogContent>
     </Dialog>
