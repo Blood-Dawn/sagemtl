@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
+from sagemtl.clean.pipeline import CleanOptions, clean_text
+from sagemtl.clean.text_normalize import NormalizeOptions
 from sagemtl.serve.routers import compose_router, datasets_router, crawl_router, jobs_router, settings_router
 
 # Create app
@@ -55,13 +58,6 @@ def health_check():
 
 
 # Legacy endpoints for backward compatibility
-from sagemtl.clean.pipeline import CleanOptions, clean_text
-from sagemtl.clean.text_normalize import NormalizeOptions
-from pydantic import BaseModel, Field
-from typing import Optional, List
-from fastapi import HTTPException
-
-
 class LegacyCleanRequest(BaseModel):
     text: str
     options: dict = Field(default_factory=dict)
@@ -91,4 +87,5 @@ def legacy_clean(payload: LegacyCleanRequest) -> LegacyCleanResponse:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8000)

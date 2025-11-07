@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from sagemtl.jobs.store import get_job_store
-from sagemtl.translate import get_translation_queue
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -127,35 +125,36 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
             job = store.get(job_id)
 
             if not job:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": f"Job '{job_id}' not found"
-                })
+                await websocket.send_json({"type": "error", "message": f"Job '{job_id}' not found"})
                 break
 
             # Send update if status changed or job updated
             if job.status != last_status or job.updated_at != last_updated:
                 if job.status in ("done", "failed", "cancelled"):
                     # Job completed
-                    await websocket.send_json({
-                        "type": "complete",
-                        "job_id": job.id,
-                        "status": job.status,
-                        "result": job.result,
-                        "error": job.error,
-                        "updated_at": job.updated_at,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "complete",
+                            "job_id": job.id,
+                            "status": job.status,
+                            "result": job.result,
+                            "error": job.error,
+                            "updated_at": job.updated_at,
+                        }
+                    )
                     break
                 else:
                     # Job still running
-                    await websocket.send_json({
-                        "type": "progress",
-                        "job_id": job.id,
-                        "status": job.status,
-                        "progress": job.meta.get("progress", 0.0),
-                        "message": job.log[-1] if job.log else "",
-                        "updated_at": job.updated_at,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "progress",
+                            "job_id": job.id,
+                            "status": job.status,
+                            "progress": job.meta.get("progress", 0.0),
+                            "message": job.log[-1] if job.log else "",
+                            "updated_at": job.updated_at,
+                        }
+                    )
 
                 last_status = job.status
                 last_updated = job.updated_at
@@ -167,11 +166,8 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
         pass
     except Exception as e:
         try:
-            await websocket.send_json({
-                "type": "error",
-                "message": str(e)
-            })
-        except:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
             pass
 
 
@@ -186,8 +182,7 @@ def retry_job(job_id: str) -> dict[str, str]:
 
     if job.status not in ("failed", "cancelled"):
         raise HTTPException(
-            status_code=400,
-            detail=f"Can only retry failed/cancelled jobs. Current status: {job.status}"
+            status_code=400, detail=f"Can only retry failed/cancelled jobs. Current status: {job.status}"
         )
 
     # Re-queue the job

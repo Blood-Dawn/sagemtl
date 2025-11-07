@@ -58,18 +58,14 @@ class CleanResponse(BaseModel):
 
 @app.post("/clean", response_model=CleanResponse)
 def post_clean(payload: CleanRequest) -> CleanResponse:
-    result = clean_text(
-        payload.text, options=CleanOptions(normalize=payload.options.to_options())
-    )
+    result = clean_text(payload.text, options=CleanOptions(normalize=payload.options.to_options()))
     return CleanResponse(text=result.text, meta=result.meta)
 
 
 class CrawlRequest(BaseModel):
     html: Optional[str] = None
     url: Optional[str] = None
-    options: NormalizePayload = Field(
-        default_factory=lambda: NormalizePayload(ensure_trailing_lf=False)
-    )
+    options: NormalizePayload = Field(default_factory=lambda: NormalizePayload(ensure_trailing_lf=False))
     allow_selectors: List[str] = Field(default_factory=list)
     block_selectors: List[str] = Field(default_factory=list)
     depth: int = 0
@@ -85,9 +81,7 @@ class CrawlResponse(BaseModel):
 @app.post("/crawl", response_model=CrawlResponse)
 def post_crawl(payload: CrawlRequest) -> CrawlResponse:
     if bool(payload.html) == bool(payload.url):
-        raise HTTPException(
-            status_code=400, detail="Provide exactly one of 'html' or 'url'."
-        )
+        raise HTTPException(status_code=400, detail="Provide exactly one of 'html' or 'url'.")
     if payload.url:
         html = fetch_text(payload.url)
         source = payload.url

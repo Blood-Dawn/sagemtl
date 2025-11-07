@@ -31,9 +31,7 @@ class TranslationQueue:
         self.store = store or get_job_store()
         self._queue: Queue[str] = Queue()
         self._lock = threading.Lock()
-        self._worker = threading.Thread(
-            target=self._run, name="sagemtl-translate", daemon=True
-        )
+        self._worker = threading.Thread(target=self._run, name="sagemtl-translate", daemon=True)
         self._worker.start()
 
     def enqueue(self, request: TranslationRequest) -> JobRecord:
@@ -86,8 +84,8 @@ class TranslationQueue:
                 # Calculate metrics
                 end_time = time.time()
                 runtime_ms = (end_time - start_time) * 1000
-                output_bytes = len(text.encode('utf-8'))
-                input_bytes = len(str(payload.get("text", "")).encode('utf-8'))
+                output_bytes = len(text.encode("utf-8"))
+                input_bytes = len(str(payload.get("text", "")).encode("utf-8"))
 
                 # Store result with metadata
                 record.result = {"text": text}
@@ -97,6 +95,7 @@ class TranslationQueue:
                 record.meta["provider"] = str(payload.get("provider"))
                 record.meta["src_lang"] = str(payload.get("src_lang", ""))
                 record.meta["tgt_lang"] = str(payload.get("tgt_lang", ""))
+                record.meta["result_type"] = "translated"
 
                 record.status = "done"
                 record.error = None

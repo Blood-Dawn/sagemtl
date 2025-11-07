@@ -16,6 +16,11 @@ from sagemtl.clean.text_normalize import NormalizeOptions
 from sagemtl.crawl.http import fetch_text
 from sagemtl.crawl.pipeline import CrawlOptions, crawl_html
 from sagemtl.crawl.novel_crawler import NovelCrawler
+from sagemtl.crawl.lncrawl_adapter import (
+    is_lncrawl_available,
+    fetch_novel,
+    check_url_support,
+)
 from sagemtl.jobs.store import JobRecord, get_job_store
 
 router = APIRouter(prefix="/api/crawl", tags=["crawl"])
@@ -23,6 +28,7 @@ router = APIRouter(prefix="/api/crawl", tags=["crawl"])
 
 class CrawlChapterRequest(BaseModel):
     """Request for crawling chapters from a novel website."""
+
     start_url: str
     depth: int = 1
     max_chapters: Optional[int] = None
@@ -69,7 +75,6 @@ def extract_chapters_from_blocks(blocks: list[dict]) -> list[dict[str, str]]:
 
 def save_chapters_to_dataset(dataset_name: str, chapters: list[dict[str, str]], novel_title: str = "") -> Path:
     """Save extracted chapters to a dataset directory."""
-    import os
     from sagemtl.serve.routers.datasets import get_data_dir
 
     data_dir = get_data_dir() / dataset_name
@@ -140,17 +145,13 @@ async def crawl_chapters_worker(job_id: str, request: CrawlChapterRequest):
 
         # Limit chapters if requested
         if request.max_chapters:
-            chapters = chapters[:request.max_chapters]
+            chapters = chapters[: request.max_chapters]
 
         # Generate dataset name
         dataset_name = request.dataset_name or f"novel-{uuid.uuid4().hex[:8]}"
 
         # Save to dataset
-        data_dir = save_chapters_to_dataset(
-            dataset_name,
-            chapters,
-            request.novel_title or dataset_name
-        )
+        data_dir = save_chapters_to_dataset(dataset_name, chapters, request.novel_title or dataset_name)
 
         # Update job
         job.status = "done"
@@ -206,14 +207,13 @@ async def crawl_chapters(request: CrawlChapterRequest) -> CrawlChapterResponse:
     asyncio.create_task(crawl_chapters_worker(job_id, request))
 
     return CrawlChapterResponse(
-        job_id=job_id,
-        status="queued",
-        message=f"Crawl job queued. Track at /api/jobs/{job_id}"
+        job_id=job_id, status="queued", message=f"Crawl job queued. Track at /api/jobs/{job_id}"
     )
 
 
 class ExtractRequest(BaseModel):
     """Request for synchronous HTML extraction."""
+
     html: Optional[str] = None
     url: Optional[str] = None
     allow_selectors: List[str] = Field(default_factory=list)
@@ -263,6 +263,7 @@ def extract_html(request: ExtractRequest) -> CrawlResult:
 
 class NovelCrawlRequest(BaseModel):
     """Request for novel chapter crawling with automatic pattern detection."""
+
     start_url: str
     start_chapter: int = 1
     end_chapter: int = 10
@@ -290,51 +291,91 @@ async def novel_crawl_worker(job_id: str, request: NovelCrawlRequest):
         store.upsert(job)
         store.append_log(job_id, f"Starting novel crawl from {request.start_url}")
 
-        # Create crawler
-        crawler = NovelCrawler(max_concurrent=request.max_concurrent)
-
-        # Crawl novel
-        store.append_log(job_id, f"Detecting chapter pattern and crawling chapters {request.start_chapter}-{request.end_chapter}")
-        novel_info = crawler.crawl_novel(
-            start_url=request.start_url,
-            start_chapter=request.start_chapter,
-            end_chapter=request.end_chapter,
-            allow_selectors=request.allow_selectors,
-            block_selectors=request.block_selectors,
-            dataset_name=request.dataset_name,
-        )
-
-        # Save to dataset
         data_dir = get_data_dir()
-        dataset_path = crawler.save_to_dataset(novel_info, data_dir, format="txt")
-        dataset_name = dataset_path.name
+
+        # Check if URL is supported by LNCrawl
+        is_supported, source_name = check_url_support(request.start_url)
+
+        if is_supported and is_lncrawl_available():
+            # Use LNCrawl for supported sites
+            store.append_log(job_id, f"URL supported by lightnovel-crawler ({source_name})")
+            store.append_log(
+                job_id, f"Using lightnovel-crawler to fetch chapters {request.start_chapter}-{request.end_chapter}"
+            )
+
+            novel_dataset = fetch_novel(
+                url=request.start_url,
+                output_dir=data_dir,
+                dataset_name=request.dataset_name,
+                start_chapter=request.start_chapter,
+                end_chapter=request.end_chapter,
+                format="txt",
+            )
+
+            dataset_name = novel_dataset.id
+            dataset_path = novel_dataset.path
+            total_words = novel_dataset.total_words
+            chapter_count = novel_dataset.chapter_count
+            novel_title = novel_dataset.name
+            novel_author = novel_dataset.author
+            cover_url = novel_dataset.cover_url
+
+        else:
+            # Fall back to built-in crawler
+            if is_lncrawl_available():
+                store.append_log(job_id, "URL not supported by lightnovel-crawler, using built-in crawler")
+            else:
+                store.append_log(job_id, "lightnovel-crawler not installed, using built-in crawler")
+
+            crawler = NovelCrawler(max_concurrent=request.max_concurrent)
+
+            store.append_log(
+                job_id, f"Detecting chapter pattern and crawling chapters {request.start_chapter}-{request.end_chapter}"
+            )
+            novel_info = crawler.crawl_novel(
+                start_url=request.start_url,
+                start_chapter=request.start_chapter,
+                end_chapter=request.end_chapter,
+                allow_selectors=request.allow_selectors,
+                block_selectors=request.block_selectors,
+                dataset_name=request.dataset_name,
+            )
+
+            dataset_path = crawler.save_to_dataset(novel_info, data_dir, format="txt")
+            dataset_name = dataset_path.name
+            total_words = sum(ch.word_count for ch in novel_info.chapters)
+            chapter_count = len(novel_info.chapters)
+            novel_title = novel_info.title
+            novel_author = novel_info.author
+            cover_url = novel_info.cover_url
 
         # Calculate metrics
         end_time = time.time()
         runtime_ms = (end_time - start_time) * 1000
-        total_words = sum(ch.word_count for ch in novel_info.chapters)
 
         # Update job with success
         job.status = "done"
         job.result = {
             "dataset_id": dataset_name,
             "dataset_path": str(dataset_path),
-            "novel_title": novel_info.title,
-            "author": novel_info.author,
-            "chapters_extracted": len(novel_info.chapters),
+            "novel_title": novel_title,
+            "author": novel_author,
+            "chapters_extracted": chapter_count,
             "total_words": total_words,
-            "cover_url": novel_info.cover_url,
+            "cover_url": cover_url,
         }
         job.meta["runtime_ms"] = round(runtime_ms, 2)
-        job.meta["chapters_extracted"] = len(novel_info.chapters)
+        job.meta["chapters_extracted"] = chapter_count
         job.meta["total_words"] = total_words
 
-        store.append_log(job_id, f"✓ Crawled {len(novel_info.chapters)} chapters ({total_words:,} words)")
+        store.append_log(job_id, f"✓ Crawled {chapter_count} chapters ({total_words:,} words)")
         store.append_log(job_id, f"✓ Saved to dataset: {dataset_name}")
         store.append_log(job_id, f"✓ Completed in {runtime_ms:.0f}ms")
         store.upsert(job)
 
     except Exception as exc:
+        import time
+
         end_time = time.time()
         runtime_ms = (end_time - start_time) * 1000
         job.status = "failed"
@@ -387,7 +428,7 @@ async def crawl_novel(request: NovelCrawlRequest) -> CrawlChapterResponse:
     )
 
     store.upsert(job)
-    store.append_log(job_id, f"Novel crawl job queued")
+    store.append_log(job_id, "Novel crawl job queued")
 
     # Start background task
     asyncio.create_task(novel_crawl_worker(job_id, request))
@@ -395,5 +436,5 @@ async def crawl_novel(request: NovelCrawlRequest) -> CrawlChapterResponse:
     return CrawlChapterResponse(
         job_id=job_id,
         status="queued",
-        message=f"Novel crawl job queued. Expected to crawl {request.end_chapter - request.start_chapter + 1} chapters. Track at /api/jobs/{job_id}"
+        message=f"Novel crawl job queued. Expected to crawl {request.end_chapter - request.start_chapter + 1} chapters. Track at /api/jobs/{job_id}",
     )

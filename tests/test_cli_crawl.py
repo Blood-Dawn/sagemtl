@@ -7,9 +7,7 @@ SAMPLE_HTML = """<!DOCTYPE html>\n<html lang=\"en\">\n  <body>\n    <article>\n 
 
 
 def run_cli(args):
-    p = subprocess.run(
-        [sys.executable, "-m", "sagemtl", *args], capture_output=True, check=True
-    )
+    p = subprocess.run([sys.executable, "-m", "sagemtl", *args], capture_output=True, check=True)
     return p.stdout.decode()
 
 
@@ -18,6 +16,4 @@ def test_cli_crawl_file(tmp_path):
     html_file.write_text(SAMPLE_HTML, encoding="utf-8")
     out = run_cli(["crawl", "--file", str(html_file)])
     payload = json.loads(out)
-    assert any(
-        'Hello world-smart "quotes"!' in block["text"] for block in payload["blocks"]
-    )
+    assert any('Hello world-smart "quotes"!' in block["text"] for block in payload["blocks"])

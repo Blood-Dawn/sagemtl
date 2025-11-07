@@ -22,10 +22,12 @@ from sagemtl.translate import TranslationRequest, get_translation_queue
 
 app = typer.Typer(help="SageMTL utilities", no_args_is_help=True)
 clean_app = typer.Typer(help="Clean text sources", invoke_without_command=True)
+crawl_app = typer.Typer(help="Crawl web pages and novels")
 datasets_app = typer.Typer(help="Manage local datasets")
 jobs_app = typer.Typer(help="Inspect translation jobs")
 settings_app = typer.Typer(help="View and edit configuration")
 app.add_typer(clean_app, name="clean")
+app.add_typer(crawl_app, name="crawl")
 app.add_typer(datasets_app, name="datasets")
 app.add_typer(jobs_app, name="jobs")
 app.add_typer(settings_app, name="settings")
@@ -74,15 +76,9 @@ def _normalize_options(
 
 
 def clean_run(
-    inp: Annotated[
-        str, typer.Option("--in", "-i", help="Input path or '-' for stdin")
-    ] = "-",
-    out: Annotated[
-        Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")
-    ] = None,
-    smart_quotes: Annotated[
-        bool, typer.Option("--smart-quotes/--no-smart-quotes")
-    ] = True,
+    inp: Annotated[str, typer.Option("--in", "-i", help="Input path or '-' for stdin")] = "-",
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")] = None,
+    smart_quotes: Annotated[bool, typer.Option("--smart-quotes/--no-smart-quotes")] = True,
     em_dash: Annotated[bool, typer.Option("--em-dash/--no-em-dash")] = True,
     minus_sign: Annotated[bool, typer.Option("--minus/--no-minus")] = True,
     zero_width: Annotated[bool, typer.Option("--zero-width/--keep-zero-width")] = True,
@@ -113,15 +109,9 @@ def clean_run(
 @clean_app.callback()
 def clean_callback(
     ctx: typer.Context,
-    inp: Annotated[
-        str, typer.Option("--in", "-i", help="Input path or '-' for stdin")
-    ] = "-",
-    out: Annotated[
-        Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")
-    ] = None,
-    smart_quotes: Annotated[
-        bool, typer.Option("--smart-quotes/--no-smart-quotes")
-    ] = True,
+    inp: Annotated[str, typer.Option("--in", "-i", help="Input path or '-' for stdin")] = "-",
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output path (default stdout)")] = None,
+    smart_quotes: Annotated[bool, typer.Option("--smart-quotes/--no-smart-quotes")] = True,
     em_dash: Annotated[bool, typer.Option("--em-dash/--no-em-dash")] = True,
     minus_sign: Annotated[bool, typer.Option("--minus/--no-minus")] = True,
     zero_width: Annotated[bool, typer.Option("--zero-width/--keep-zero-width")] = True,
@@ -160,12 +150,8 @@ def clean_batch(
         list[Path],
         typer.Argument(help="Input files/directories", exists=True, resolve_path=True),
     ],
-    out: Annotated[
-        Path, typer.Option("--out", "-o", help="Output JSONL", resolve_path=True)
-    ] = Path("clean.jsonl"),
-    smart_quotes: Annotated[
-        bool, typer.Option("--smart-quotes/--no-smart-quotes")
-    ] = True,
+    out: Annotated[Path, typer.Option("--out", "-o", help="Output JSONL", resolve_path=True)] = Path("clean.jsonl"),
+    smart_quotes: Annotated[bool, typer.Option("--smart-quotes/--no-smart-quotes")] = True,
     em_dash: Annotated[bool, typer.Option("--em-dash/--no-em-dash")] = True,
     minus_sign: Annotated[bool, typer.Option("--minus/--no-minus")] = True,
     zero_width: Annotated[bool, typer.Option("--zero-width/--keep-zero-width")] = True,
@@ -191,27 +177,18 @@ def clean_batch(
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8", newline="\n") as fh:
         for result in iter_clean_batch(inputs, options=CleanOptions(normalize=options)):
-            fh.write(
-                json.dumps(
-                    {"text": result.text, "meta": result.meta}, ensure_ascii=False
-                )
-                + "\n"
-            )
+            fh.write(json.dumps({"text": result.text, "meta": result.meta}, ensure_ascii=False) + "\n")
     typer.echo(f"Wrote {out}")
 
 
 @app.command(help="Extract structured text blocks from HTML")
 def crawl(
-    url: Annotated[
-        Optional[str], typer.Option("--url", help="HTTP(S) URL to crawl")
-    ] = None,
+    url: Annotated[Optional[str], typer.Option("--url", help="HTTP(S) URL to crawl")] = None,
     file: Annotated[
         Optional[Path],
         typer.Option("--file", help="HTML file path", exists=True, resolve_path=True),
     ] = None,
-    depth: Annotated[
-        int, typer.Option(help="Link depth (currently informational)")
-    ] = 0,
+    depth: Annotated[int, typer.Option(help="Link depth (currently informational)")] = 0,
     render_js: Annotated[bool, typer.Option("--render-js/--no-render-js")] = False,
     allow_selector: Annotated[
         list[str],
@@ -221,9 +198,7 @@ def crawl(
         list[str],
         typer.Option("--block", help="CSS selector block-list", show_default=False),
     ] = [],
-    out: Annotated[
-        Optional[Path], typer.Option("--out", "-o", help="Output JSON path")
-    ] = None,
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output JSON path")] = None,
 ) -> None:
     if bool(url) == bool(file):
         raise typer.BadParameter("Provide exactly one of --url or --file.")
@@ -263,15 +238,9 @@ def crawl(
 @app.command(help="Queue a translation job (stub implementation)")
 def translate(
     text: Annotated[str, typer.Argument(help="Text to translate")],
-    src_lang: Annotated[
-        str, typer.Option("--src-lang", help="Source language code")
-    ] = "en",
-    tgt_lang: Annotated[
-        str, typer.Option("--tgt-lang", help="Target language code")
-    ] = "fr",
-    provider: Annotated[
-        Optional[str], typer.Option("--provider", help="Translation backend override")
-    ] = None,
+    src_lang: Annotated[str, typer.Option("--src-lang", help="Source language code")] = "en",
+    tgt_lang: Annotated[str, typer.Option("--tgt-lang", help="Target language code")] = "fr",
+    provider: Annotated[Optional[str], typer.Option("--provider", help="Translation backend override")] = None,
     glossary: Annotated[
         Optional[Path],
         typer.Option(
@@ -283,9 +252,7 @@ def translate(
             help="Glossary CSV",
         ),
     ] = None,
-    wait: Annotated[
-        bool, typer.Option("--wait/--no-wait", help="Wait for completion")
-    ] = False,
+    wait: Annotated[bool, typer.Option("--wait/--no-wait", help="Wait for completion")] = False,
 ) -> None:
     queue = get_translation_queue()
     request = TranslationRequest(
@@ -324,12 +291,8 @@ def datasets_list() -> None:
 @datasets_app.command("add", help="Register a dataset file")
 def datasets_add(
     name: Annotated[str, typer.Argument(help="Dataset name")],
-    path: Annotated[
-        Path, typer.Argument(help="Dataset file", exists=True, resolve_path=True)
-    ],
-    fmt: Annotated[
-        Optional[DatasetFormat], typer.Option("--format", help="Input format override")
-    ] = None,
+    path: Annotated[Path, typer.Argument(help="Dataset file", exists=True, resolve_path=True)],
+    fmt: Annotated[Optional[DatasetFormat], typer.Option("--format", help="Input format override")] = None,
 ) -> None:
     registry = get_dataset_registry()
     record = registry.add(name, path, fmt=fmt)
@@ -383,6 +346,74 @@ def jobs_purge(
     typer.echo(f"Removed {len(removed)} jobs")
 
 
+@crawl_app.command("novel", help="Crawl a novel from supported sites")
+def crawl_novel(
+    url: Annotated[str, typer.Argument(help="Novel URL")],
+    start: Annotated[int, typer.Option("--start", "-s", help="Start chapter")] = 1,
+    end: Annotated[Optional[int], typer.Option("--end", "-e", help="End chapter (default: all)")] = None,
+    name: Annotated[Optional[str], typer.Option("--name", "-n", help="Dataset name")] = None,
+    wait: Annotated[bool, typer.Option("--wait/--no-wait", help="Wait for completion")] = True,
+) -> None:
+    """Crawl a novel using lightnovel-crawler or built-in crawler."""
+    from sagemtl.crawl.lncrawl_adapter import (
+        is_lncrawl_available,
+        check_url_support,
+        fetch_novel,
+    )
+    from sagemtl.crawl.novel_crawler import NovelCrawler
+
+    # Get data directory
+    data_dir = Path.home() / ".sagemtl" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check URL support
+    is_supported, source_name = check_url_support(url)
+
+    if is_supported and is_lncrawl_available():
+        typer.echo(f"Using lightnovel-crawler ({source_name})...")
+        try:
+            dataset = fetch_novel(
+                url=url,
+                output_dir=data_dir,
+                dataset_name=name,
+                start_chapter=start,
+                end_chapter=end,
+                format="txt",
+            )
+            typer.echo(f"✓ Crawled {dataset.chapter_count} chapters")
+            typer.echo(f"✓ Saved to: {dataset.path}")
+            typer.echo(f"✓ Title: {dataset.name}")
+            if dataset.author:
+                typer.echo(f"✓ Author: {dataset.author}")
+        except Exception as exc:
+            typer.secho(f"✗ Error: {exc}", err=True, fg=typer.colors.RED)
+            raise typer.Exit(1)
+    else:
+        if is_lncrawl_available():
+            typer.echo("URL not supported by lightnovel-crawler, using built-in crawler...")
+        else:
+            typer.echo("lightnovel-crawler not installed, using built-in crawler...")
+            typer.echo("Install with: pip install 'sagemtl[lncrawl]'")
+
+        try:
+            crawler = NovelCrawler()
+            novel_info = crawler.crawl_novel(
+                start_url=url,
+                start_chapter=start,
+                end_chapter=end or 999,
+                dataset_name=name,
+            )
+            dataset_path = crawler.save_to_dataset(novel_info, data_dir, format="txt")
+            typer.echo(f"✓ Crawled {len(novel_info.chapters)} chapters")
+            typer.echo(f"✓ Saved to: {dataset_path}")
+            typer.echo(f"✓ Title: {novel_info.title}")
+            if novel_info.author:
+                typer.echo(f"✓ Author: {novel_info.author}")
+        except Exception as exc:
+            typer.secho(f"✗ Error: {exc}", err=True, fg=typer.colors.RED)
+            raise typer.Exit(1)
+
+
 @settings_app.command("show", help="Show current configuration")
 def settings_show() -> None:
     config = load_config()
@@ -412,9 +443,7 @@ def serve(
     try:
         import uvicorn
     except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
-        raise typer.BadParameter(
-            "uvicorn is required to use the serve command"
-        ) from exc
+        raise typer.BadParameter("uvicorn is required to use the serve command") from exc
 
     api_module = "sagemtl.serve.api_v2:app" if v2 else "sagemtl.serve.api:app"
     typer.echo(f"Starting SageMTL API {'v2' if v2 else 'v1'} on http://{host}:{port}")

@@ -125,6 +125,7 @@ def test_save_to_dataset():
 
         # Verify metadata
         import json
+
         meta = json.loads((dataset_path / "meta.json").read_text())
         assert meta["type"] == "novel"
         assert meta["title"] == "Test Novel"

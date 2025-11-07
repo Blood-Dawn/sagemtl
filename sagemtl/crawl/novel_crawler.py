@@ -12,7 +12,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -23,6 +22,7 @@ from .boilerplate import extract_main_content
 @dataclass
 class ChapterInfo:
     """Information about a single chapter."""
+
     number: int
     title: str
     url: str
@@ -33,6 +33,7 @@ class ChapterInfo:
 @dataclass
 class NovelInfo:
     """Information about a novel."""
+
     title: str
     author: Optional[str]
     description: Optional[str]
@@ -254,12 +255,15 @@ class NovelCrawler:
             elif format == "md":
                 content = f"# {chapter.title}\n\n{chapter.content}"
             elif format == "jsonl":
-                content = json.dumps({
-                    "chapter": chapter.number,
-                    "title": chapter.title,
-                    "content": chapter.content,
-                    "url": chapter.url,
-                }, ensure_ascii=False)
+                content = json.dumps(
+                    {
+                        "chapter": chapter.number,
+                        "title": chapter.title,
+                        "content": chapter.content,
+                        "url": chapter.url,
+                    },
+                    ensure_ascii=False,
+                )
             else:
                 content = chapter.content
 
@@ -302,16 +306,15 @@ def try_lightnovel_crawler_integration(url: str, output_dir: Path) -> Optional[P
     installed separately. The lightnovel-crawler package is GPLv3 licensed.
 
     Returns the dataset path if successful, None otherwise.
+
+    Note: This function is deprecated. Use lncrawl_adapter.fetch_novel() instead.
     """
     try:
         # Try to import lightnovel-crawler (optional dependency)
-        import lncrawl
+        from lncrawl.core.app import App  # noqa: F401
 
-        # TODO: Implement integration with lightnovel-crawler
-        # This would require the lightnovel-crawler package to be installed
-        # and would provide better support for many novel sites
-
-        print("lightnovel-crawler integration not yet implemented")
+        # This integration is now handled by lncrawl_adapter.py
+        print("lightnovel-crawler available - use lncrawl_adapter.fetch_novel()")
         return None
 
     except ImportError:

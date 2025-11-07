@@ -12,7 +12,7 @@ from typing import List, Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from sagemtl.datasets.registry import DatasetFormat, get_dataset_registry
+from sagemtl.datasets.registry import get_dataset_registry
 
 router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 
@@ -52,6 +52,7 @@ class NovelDatasetResponse(BaseModel):
 def get_data_dir() -> Path:
     """Get the base data directory for datasets."""
     import os
+
     data_dir = Path(os.environ.get("SAGEMTL_DATA_DIR", Path.home() / ".sagemtl" / "data"))
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
@@ -145,20 +146,21 @@ async def import_files(
         suffix = Path(upload_file.filename).suffix.lower()
         if suffix not in {".txt", ".md", ".html", ".jsonl", ".epub"}:
             raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported file type: {suffix}. Allowed: .txt, .md, .html, .jsonl, .epub"
+                status_code=400, detail=f"Unsupported file type: {suffix}. Allowed: .txt, .md, .html, .jsonl, .epub"
             )
 
         # Save file
         dest_path, file_bytes = save_uploaded_file(upload_file, files_dir)
         total_bytes += file_bytes
 
-        imported_files.append({
-            "filename": upload_file.filename,
-            "path": str(dest_path.relative_to(data_dir)),
-            "size_bytes": file_bytes,
-            "type": suffix[1:],  # Remove leading dot
-        })
+        imported_files.append(
+            {
+                "filename": upload_file.filename,
+                "path": str(dest_path.relative_to(data_dir)),
+                "size_bytes": file_bytes,
+                "type": suffix[1:],  # Remove leading dot
+            }
+        )
 
     # Save metadata
     meta = {
@@ -236,7 +238,7 @@ def delete_dataset(dataset_id: str) -> dict[str, str]:
 
     # Remove from registry (best effort)
     try:
-        registry = get_dataset_registry()
+        get_dataset_registry()
         # Registry doesn't have a delete method, so we'll just return success
     except Exception:
         pass
@@ -257,12 +259,14 @@ def list_dataset_files(dataset_id: str) -> List[dict[str, object]]:
     for file_path in files_dir.rglob("*"):
         if file_path.is_file():
             stat = file_path.stat()
-            files.append({
-                "name": file_path.name,
-                "path": str(file_path.relative_to(data_dir)),
-                "size_bytes": stat.st_size,
-                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            })
+            files.append(
+                {
+                    "name": file_path.name,
+                    "path": str(file_path.relative_to(data_dir)),
+                    "size_bytes": stat.st_size,
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                }
+            )
 
     return files
 

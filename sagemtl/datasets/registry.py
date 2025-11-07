@@ -78,9 +78,7 @@ class DatasetRegistry:
 
     def _flush(self) -> None:
         payload = {"datasets": [record.to_dict() for record in self._datasets.values()]}
-        self.registry_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
+        self.registry_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     def list(self) -> List[DatasetRecord]:
         return list(self._datasets.values())
@@ -102,9 +100,7 @@ class DatasetRegistry:
         rows = self._load_records(source, fmt)
         self._validate_rows(rows)
         self._write_dataset(rows, target, fmt)
-        record = DatasetRecord(
-            name=name, filename=filename, format=fmt, meta=meta or {}
-        )
+        record = DatasetRecord(name=name, filename=filename, format=fmt, meta=meta or {})
         self._datasets[name] = record
         self._flush()
         return record
@@ -128,9 +124,7 @@ class DatasetRegistry:
         raise ValueError(f"Unsupported dataset format: {path.suffix}")
 
     def _safe_name(self, name: str) -> str:
-        slug = "".join(
-            ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in name.lower()
-        )
+        slug = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in name.lower())
         return slug.strip("-") or "dataset"
 
     def _load_records(self, path: Path, fmt: DatasetFormat) -> List[Dict[str, object]]:
@@ -149,9 +143,7 @@ class DatasetRegistry:
                 return [dict(row) for row in reader]
         raise ValueError(fmt)
 
-    def _write_dataset(
-        self, rows: Sequence[Dict[str, object]], path: Path, fmt: DatasetFormat
-    ) -> None:
+    def _write_dataset(self, rows: Sequence[Dict[str, object]], path: Path, fmt: DatasetFormat) -> None:
         if fmt == "jsonl":
             with path.open("w", encoding="utf-8", newline="\n") as fh:
                 for row in rows:
@@ -174,9 +166,7 @@ class DatasetRegistry:
         for idx, row in enumerate(rows):
             missing = REQUIRED_FIELDS - row.keys()
             if missing:
-                raise ValueError(
-                    f"Row {idx} missing required fields: {sorted(missing)}"
-                )
+                raise ValueError(f"Row {idx} missing required fields: {sorted(missing)}")
             meta = row.get("meta")
             if meta is not None and not isinstance(meta, dict):
                 raise ValueError(f"Row {idx} has non-dict meta field")

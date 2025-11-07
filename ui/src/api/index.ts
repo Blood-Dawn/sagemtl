@@ -45,13 +45,13 @@ export type TranslatePayload = {
 };
 
 export async function postTranslate(payload: TranslatePayload) {
+  // Mock translation: Just reverse the text as a simple demo
+  const mockTranslated = payload.text.split(' ').reverse().join(' ');
+
   return delay({
     id: `JOB-${Math.floor(Math.random() * 10000)}`,
     source: payload.text,
-    target: payload.text
-      .split(' ')
-      .map((word) => (word.length > 4 ? `${word}-fr` : word))
-      .join(' '),
+    target: mockTranslated,
   }, 900);
 }
 
