@@ -3,12 +3,8 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
-  server: {
-    // Add the specific host your tunnel uses:
-    allowedHosts: [
-      'hewlett-equality-southeast-opt.trycloudflare.com'
-    ]
-  },
+  // No special allowedHosts — run locally without Cloudflare tunnel settings
+  // server: { allowedHosts: [] },
   plugins: [react()],
   resolve: {
     alias: {
