@@ -1,0 +1,20 @@
+# SageMTL Desktop Application Requirements
+
+# Qt Framework for UI
+PySide6>=6.5.0
+
+# Translation Engine (offline)
+argostranslate>=1.8.0
+
+# Novel Crawler (optional but recommended)
+lightnovel-crawler>=3.0.0
+
+# Standard libraries (usually included with Python)
+# - zipfile (EPUB extraction)
+# - xml.etree.ElementTree (EPUB parsing)
+# - csv (glossary)
+# - subprocess (LNCrawl integration)
+# - threading (background jobs)
+
+# Packaging
+pyinstaller>=5.13.0
