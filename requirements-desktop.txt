@@ -9,12 +9,20 @@ argostranslate>=1.8.0
 # Novel Crawler (optional but recommended)
 lightnovel-crawler>=3.0.0
 
+# EPUB creation
+ebooklib>=0.18
+
+# Structured logging
+python-json-logger>=2.0.7
+
 # Standard libraries (usually included with Python)
 # - zipfile (EPUB extraction)
 # - xml.etree.ElementTree (EPUB parsing)
 # - csv (glossary)
 # - subprocess (LNCrawl integration)
 # - threading (background jobs)
+# - hashlib (content deduplication)
+# - logging (structured logging)
 
 # Packaging
 pyinstaller>=5.13.0
