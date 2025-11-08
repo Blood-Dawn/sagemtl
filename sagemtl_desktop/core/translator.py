@@ -6,6 +6,30 @@ import re
 from typing import Callable, List, Tuple, Optional
 
 
+class MissingTranslatorError(Exception):
+    """Raised when a required translation model is not installed"""
+
+    def __init__(self, source_lang: str, target_lang: str, available_pairs: List[Tuple[str, str]] = None):
+        self.source_lang = source_lang
+        self.target_lang = target_lang
+        self.available_pairs = available_pairs or []
+
+        message = (
+            f"Translation model not found for {source_lang} → {target_lang}.\n\n"
+            f"Please install the required language pack:\n"
+            f"  python -c \"import argostranslate.package; "
+            f"argostranslate.package.update_package_index(); "
+            f"pkg = [p for p in argostranslate.package.get_available_packages() "
+            f"if p.from_code == '{source_lang}' and p.to_code == '{target_lang}'][0]; "
+            f"argostranslate.package.install_from_path(pkg.download())\"\n"
+        )
+
+        if self.available_pairs:
+            message += f"\nAvailable installed models: {', '.join(f'{s}→{t}' for s, t in self.available_pairs[:5])}"
+
+        super().__init__(message)
+
+
 class Translator:
     """Argos Translate wrapper for offline translation"""
 
@@ -69,6 +93,43 @@ class Translator:
             print(f"Error getting languages: {e}")
             return []
 
+    def detect_language(self, text: str) -> str:
+        """
+        Detect language of input text.
+
+        Args:
+            text: Text to detect language for
+
+        Returns:
+            Language code (e.g., 'zh', 'ja', 'ko', 'en')
+
+        Note: This is a simple heuristic based on Unicode ranges.
+        For production, consider using langdetect or langid libraries.
+        """
+        # Simple heuristic based on Unicode character ranges
+        sample = text[:500]  # Check first 500 chars
+
+        # Count character types
+        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', sample))
+        japanese_chars = len(re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', sample))
+        korean_chars = len(re.findall(r'[\uac00-\ud7af]', sample))
+
+        total_chars = len(sample.strip())
+        if total_chars == 0:
+            return 'en'  # Default to English
+
+        # Thresholds (at least 20% of characters)
+        threshold = 0.2
+
+        if chinese_chars / total_chars > threshold:
+            return 'zh'
+        elif japanese_chars / total_chars > threshold:
+            return 'ja'
+        elif korean_chars / total_chars > threshold:
+            return 'ko'
+        else:
+            return 'en'  # Default for Latin scripts
+
     def translate(
         self,
         text: str,
@@ -82,7 +143,7 @@ class Translator:
 
         Args:
             text: Input text
-            source_lang: Source language code (e.g., 'zh', 'ja', 'ko')
+            source_lang: Source language code (e.g., 'zh', 'ja', 'ko') or 'auto'
             target_lang: Target language code (e.g., 'en')
             progress_callback: Function to call with progress (0-100)
             log_callback: Function to call with (level, message)
@@ -92,10 +153,20 @@ class Translator:
 
         Raises:
             RuntimeError: If Argos Translate is not available
-            ValueError: If language pair is not installed
+            MissingTranslatorError: If language pair is not installed
         """
         if not self._argos_available:
-            raise RuntimeError("Argos Translate is not installed")
+            raise RuntimeError(
+                "Argos Translate is not installed. "
+                "Install with: pip install argostranslate"
+            )
+
+        # Auto-detect source language if needed
+        if source_lang == "auto":
+            detected = self.detect_language(text)
+            if log_callback:
+                log_callback("info", f"Auto-detected language: {detected}")
+            source_lang = detected
 
         if log_callback:
             log_callback("info", f"Starting translation {source_lang}→{target_lang}")
@@ -109,12 +180,25 @@ class Translator:
             )
 
             if translation is None:
-                raise ValueError(f"No translation model for {source_lang}→{target_lang}")
+                # Get available pairs for error message
+                import argostranslate.package
+                available = [(p.from_code, p.to_code) for p in argostranslate.package.get_installed_packages()]
+                raise MissingTranslatorError(source_lang, target_lang, available)
 
+        except MissingTranslatorError:
+            if log_callback:
+                log_callback("error", f"Missing translation model: {source_lang}→{target_lang}")
+            raise
         except Exception as e:
             if log_callback:
-                log_callback("error", f"Translation model not found: {e}")
-            raise ValueError(f"No translation model for {source_lang}→{target_lang}: {e}")
+                log_callback("error", f"Translation model error: {e}")
+            # Get available pairs for error message
+            try:
+                import argostranslate.package
+                available = [(p.from_code, p.to_code) for p in argostranslate.package.get_installed_packages()]
+            except:
+                available = []
+            raise MissingTranslatorError(source_lang, target_lang, available)
 
         # Split text into chunks (by sentences)
         chunks = self._split_into_sentences(text)
