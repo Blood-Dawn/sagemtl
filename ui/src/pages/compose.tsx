@@ -35,9 +35,9 @@ export function ComposePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [diffMode, setDiffMode] = useState<'inline' | 'side-by-side'>('side-by-side');
   const [isUploading, setIsUploading] = useState(false);
-  const [currentDatasetId, setCurrentDatasetId] = useState<string | null>(null);
+  const [_currentDatasetId, setCurrentDatasetId] = useState<string | null>(null);
 
-  const { toast } = useToast();
+  const { push: toast } = useToast();
 
   // Load text from navigation state (when opening from Datasets page)
   useEffect(() => {

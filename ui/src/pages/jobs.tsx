@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { RefreshCw, Play, X, Eye, Clock, CheckCircle2, XCircle, Loader2, BarChart3, TrendingUp } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { RefreshCw, X, Eye, Clock, CheckCircle2, XCircle, Loader2, TrendingUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -31,7 +30,7 @@ export function JobsPage() {
   const loadJobs = useCallback(async () => {
     try {
       const result = await apiClient.listJobs();
-      setJobs(result.jobs);
+      setJobs(result);
     } catch (error) {
       push({
         title: 'Failed to load jobs',
@@ -120,7 +119,7 @@ export function JobsPage() {
           status === 'done'
             ? 'default'
             : status === 'failed'
-            ? 'destructive'
+            ? 'danger'
             : status === 'running'
             ? 'default'
             : 'secondary';
@@ -419,7 +418,7 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
                   liveJob.status === 'done'
                     ? 'default'
                     : liveJob.status === 'failed'
-                    ? 'destructive'
+                    ? 'danger'
                     : 'secondary'
                 }
                 className="mt-1 capitalize"
@@ -443,10 +442,10 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
             <div>
               <p className="text-sm font-medium text-muted-foreground mb-2">Job Metrics</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {liveJob.meta.runtime_ms && (
+                {liveJob.meta.runtime_ms !== undefined && (
                   <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
                     <p className="text-xs text-muted-foreground">Runtime</p>
-                    <p className="text-sm font-medium">{liveJob.meta.runtime_ms} ms</p>
+                    <p className="text-sm font-medium">{liveJob.meta.runtime_ms as number} ms</p>
                   </div>
                 )}
                 {liveJob.meta.input_bytes !== undefined && (
@@ -461,7 +460,7 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
                     <p className="text-sm font-medium">{(liveJob.meta.output_bytes as number / 1024).toFixed(1)} KB</p>
                   </div>
                 )}
-                {liveJob.meta.provider && (
+                {liveJob.meta.provider !== undefined && (
                   <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
                     <p className="text-xs text-muted-foreground">Provider</p>
                     <p className="text-sm font-medium capitalize">{liveJob.meta.provider as string}</p>
@@ -536,7 +535,7 @@ function JobDetailDialog({ job, onClose, onCancel, onRetry }: JobDetailDialogPro
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium text-muted-foreground">
-                    Log File {liveJob.status === 'failed' && <Badge variant="destructive" className="ml-2">Failed</Badge>}
+                    Log File {liveJob.status === 'failed' && <Badge variant="danger" className="ml-2">Failed</Badge>}
                   </p>
                   {!fullLog && (
                     <Button

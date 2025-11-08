@@ -10,12 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/data-table';
 import { useToast } from '@/components/toaster';
 import { apiClient } from '@/api/client-v2';
-import type { Dataset, Novel } from '@/api/client-v2';
+import type { DatasetRecord, NovelDataset } from '@/api/client-v2';
 
 export function DatasetsPage() {
   const [search, setSearch] = useState('');
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [novels, setNovels] = useState<Novel[]>([]);
+  const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
+  const [novels, setNovels] = useState<NovelDataset[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const { push } = useToast();
   const navigate = useNavigate();
@@ -27,8 +27,8 @@ export function DatasetsPage() {
         apiClient.listDatasets(),
         apiClient.listNovels(),
       ]);
-      setDatasets(datasetsData.datasets);
-      setNovels(novelsData.novels);
+      setDatasets(datasetsData);
+      setNovels(novelsData);
     } catch (error) {
       push({
         title: 'Failed to load data',
@@ -52,7 +52,7 @@ export function DatasetsPage() {
         const result = await apiClient.importDataset(acceptedFiles);
         push({
           title: 'Import successful',
-          description: `Imported ${result.imported_files.length} file(s) to dataset "${result.dataset_name}"`,
+          description: `Imported ${result.files_imported} file(s) to dataset "${result.name}"`,
         });
         await loadData(); // Refresh datasets
       } catch (error) {
@@ -93,7 +93,7 @@ export function DatasetsPage() {
   }, [datasets, search]);
 
   // Dataset table columns
-  const datasetColumns: ColumnDef<Dataset>[] = [
+  const datasetColumns: ColumnDef<DatasetRecord>[] = [
     {
       accessorKey: 'name',
       header: 'Name',
@@ -105,10 +105,10 @@ export function DatasetsPage() {
       ),
     },
     {
-      accessorKey: 'size',
+      accessorKey: 'size_bytes',
       header: 'Size',
       cell: ({ row }) => {
-        const bytes = row.original.size;
+        const bytes = row.original.size_bytes;
         if (bytes < 1024) return `${bytes} B`;
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
         if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -125,15 +125,15 @@ export function DatasetsPage() {
       ),
     },
     {
-      accessorKey: 'added',
+      accessorKey: 'created_at',
       header: 'Added',
       cell: ({ row }) => {
-        const date = new Date(row.original.added);
+        const date = new Date(row.original.created_at);
         return date.toLocaleDateString();
       },
     },
     {
-      accessorKey: 'items',
+      accessorKey: 'items_count',
       header: 'Items',
     },
     {
@@ -149,7 +149,8 @@ export function DatasetsPage() {
                 // Load the first file from the dataset
                 const files = await apiClient.listDatasetFiles(row.original.id);
                 if (files.length > 0) {
-                  const fileContent = await apiClient.getDatasetFile(row.original.id, files[0].path);
+                  const filePath = (files[0].path || files[0].name) as string;
+                  const fileContent = await apiClient.getDatasetFile(row.original.id, filePath);
                   navigate('/compose', { state: { text: fileContent.content, datasetId: row.original.id } });
                 } else {
                   push({
@@ -274,22 +275,22 @@ export function DatasetsPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               {novels.map((novel) => (
                 <Card key={novel.id} className="overflow-hidden">
-                  {novel.cover_image && (
+                  {novel.cover_url && (
                     <div className="aspect-[3/4] overflow-hidden bg-muted">
                       <img
-                        src={novel.cover_image}
-                        alt={novel.title}
+                        src={novel.cover_url}
+                        alt={novel.name}
                         className="h-full w-full object-cover"
                       />
                     </div>
                   )}
                   <CardContent className="p-4">
-                    <h3 className="font-medium line-clamp-2">{novel.title}</h3>
-                    {novel.author && (
-                      <p className="text-xs text-muted-foreground">by {novel.author}</p>
+                    <h3 className="font-medium line-clamp-2">{novel.name}</h3>
+                    {typeof novel.meta?.author === 'string' && (
+                      <p className="text-xs text-muted-foreground">by {novel.meta.author}</p>
                     )}
                     <div className="mt-2 flex items-center justify-between">
-                      <Badge variant="secondary">{novel.chapters.length} chapters</Badge>
+                      <Badge variant="secondary">{novel.chapter_count} chapters</Badge>
                       <Button
                         size="sm"
                         variant="ghost"

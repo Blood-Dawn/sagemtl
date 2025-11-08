@@ -12,8 +12,18 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/toaster';
 import { apiClient } from '@/api/client-v2';
-import type { ChapterResult } from '@/api/client-v2';
+// TODO: Define ChapterResult type or use appropriate type from API client
+// import type { ChapterResult } from '@/api/client-v2';
 import { useJobWebSocket } from '@/hooks/use-job-websocket';
+
+// Local type definition until API client exports it
+interface ChapterResult {
+  chapter_num: number;
+  title: string;
+  url: string;
+  content: string;
+  word_count: number;
+}
 
 export function CrawlPage() {
   const [mode, setMode] = useState<'url' | 'html'>('url');
@@ -66,6 +76,8 @@ export function CrawlPage() {
   const handleExtract = async () => {
     try {
       setIsRunning(true);
+      // TODO: Implement extractHTML method in API client or use alternative
+      /*
       const result = await apiClient.extractHTML({
         url: mode === 'url' ? url : undefined,
         html: mode === 'html' ? html : undefined,
@@ -75,16 +87,25 @@ export function CrawlPage() {
 
       setChapters([
         {
-          chapter_number: 1,
+          chapter_num: 1,
           title: result.title || 'Extracted Content',
           content: result.text,
-          url: url || undefined,
+          url: url || '',
+          word_count: result.text.split(' ').length,
         },
       ]);
 
       push({
         title: 'Extraction complete',
         description: `Extracted ${result.text.split(' ').length} words`,
+      });
+      */
+      
+      // Placeholder - method not yet implemented
+      push({
+        title: 'Not implemented',
+        description: 'Extract HTML functionality needs to be implemented in API client',
+        variant: 'destructive',
       });
     } catch (error) {
       push({
@@ -111,13 +132,11 @@ export function CrawlPage() {
     try {
       setIsRunning(true);
       const result = await apiClient.crawlChapters({
-        base_url: url,
-        start_chapter: startChapter,
-        end_chapter: endChapter,
-        chapter_url_template: undefined, // Let backend auto-detect
+        start_url: url,
+        depth: endChapter - startChapter + 1,
+        max_chapters: endChapter - startChapter + 1,
         allow_selectors: allowSelectors.split(',').map((s) => s.trim()).filter(Boolean),
         block_selectors: blockSelectors.split(',').map((s) => s.trim()).filter(Boolean),
-        max_concurrent: maxConcurrent,
       });
 
       setCurrentJobId(result.job_id);
@@ -138,9 +157,9 @@ export function CrawlPage() {
 
   const chapterColumns: ColumnDef<ChapterResult>[] = [
     {
-      accessorKey: 'chapter_number',
+      accessorKey: 'chapter_num',
       header: 'Chapter',
-      cell: ({ row }) => <Badge variant="outline">Ch. {row.original.chapter_number}</Badge>,
+      cell: ({ row }) => <Badge variant="outline">Ch. {row.original.chapter_num}</Badge>,
     },
     {
       accessorKey: 'title',

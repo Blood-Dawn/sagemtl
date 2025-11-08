@@ -1,4 +1,4 @@
-import { Search, Sparkles, Globe2, Database, Workflow, Settings, Layers } from 'lucide-react';
+import { Search, Database, Workflow, Settings, Layers } from 'lucide-react';
 
 export type NavItem = {
   label: string;
