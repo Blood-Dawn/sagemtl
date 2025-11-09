@@ -1,8 +1,0 @@
-{
-  "name": "sagemtl-monorepo",
-  "private": true,
-  "scripts": {
-    "web:dev": "npm --prefix ui run dev",
-    "web:build": "npm --prefix ui run build"
-  }
-}

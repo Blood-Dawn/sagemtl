@@ -1,38 +1,25 @@
 """
-Novel crawler using LNCrawl (Lightnovel Crawler) as subprocess.
+Novel crawler using SageCrawler with automatic chapter detection.
 """
 
-import subprocess
-import sys
+import asyncio
 import tempfile
-import shutil
 from pathlib import Path
 from typing import Callable, Optional
 
+from sagemtl.crawl.novel_crawler import NovelCrawler
+
 
 class Crawler:
-    """Wrapper for Lightnovel Crawler (LNCrawl) subprocess"""
+    """Wrapper for SageCrawler - built-in novel crawler with pattern detection"""
 
     def __init__(self):
         self.output_dir = Path(tempfile.mkdtemp(prefix="sagemtl_crawl_"))
-        self._check_lncrawl_installed()
-
-    def _check_lncrawl_installed(self) -> bool:
-        """Check if LNCrawl is installed"""
-        try:
-            result = subprocess.run(
-                ["lncrawl", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            return result.returncode == 0
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            return False
+        self.crawler = NovelCrawler()
 
     def is_available(self) -> bool:
-        """Check if LNCrawl is available"""
-        return self._check_lncrawl_installed()
+        """SageCrawler is always available"""
+        return True
 
     def crawl_novel(
         self,
@@ -44,7 +31,7 @@ class Crawler:
         log_callback: Optional[Callable[[str, str], None]] = None
     ) -> str:
         """
-        Crawl novel using LNCrawl subprocess.
+        Crawl novel using SageCrawler.
 
         Args:
             url: Novel URL
@@ -55,186 +42,63 @@ class Crawler:
             log_callback: Log callback (level, message)
 
         Returns:
-            Path to downloaded EPUB file
+            Path to generated text file containing chapters
 
         Raises:
-            RuntimeError: If LNCrawl is not installed or crawl fails
+            RuntimeError: If crawl fails
         """
         if log_callback:
-            log_callback("info", f"Starting crawl: {url}")
+            log_callback("info", f"Starting SageCrawler: {url}")
 
-        # Ensure output directory exists
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            # Ensure output directory exists
+            self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Build LNCrawl command with multiprocessing context fix
-        # Use force=True to avoid "context has already been set" error
-        python_code = (
-            "import multiprocessing as mp; "
-            "mp.set_start_method('spawn', force=True); "
-            "import lncrawl; "
-            "lncrawl.main()"
-        )
+            if log_callback:
+                log_callback("info", "Detecting chapter pattern...")
 
-        # Base command with Python -c to set multiprocessing context
-        # Use sys.executable to ensure subprocess uses same Python (virtualenv) as parent
-        cmd = [
-            sys.executable, "-c", python_code,
-            "--suppress",  # Non-interactive mode
-            "--format", "epub",
-            "--output", str(self.output_dir),
-            "--source", url
-        ]
-
-        if novel_name:
-            cmd.extend(["--novel-name", novel_name])
-
-        if start_chapter is not None:
-            cmd.extend(["--first", str(start_chapter)])
-
-        if end_chapter is not None:
-            cmd.extend(["--last", str(end_chapter)])
-
-        if log_callback:
-            # Log only the meaningful parts (not the Python wrapper)
-            meaningful_args = [arg for arg in cmd[3:] if arg != python_code]  # Skip python -c "code"
-            log_callback("info", f"Running LNCrawl with: {' '.join(meaningful_args)}")
-
-        # Retry logic: 2 attempts with backoff
-        max_attempts = 2
-        backoff_seconds = [0, 5]  # No delay on first attempt, 5s on retry
-
-        last_error = None
-
-        for attempt in range(max_attempts):
-            if attempt > 0 and log_callback:
-                log_callback("warn", f"Retrying crawl (attempt {attempt + 1}/{max_attempts})...")
-                import time
-                time.sleep(backoff_seconds[attempt])
-
+            # Run the crawler
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
-                # Run subprocess
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,  # Combine stderr with stdout
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True
+                novel_info = loop.run_until_complete(
+                    self.crawler.crawl_novel(
+                        start_url=url,
+                        start_chapter=start_chapter or 1,
+                        end_chapter=end_chapter or 999,
+                        dataset_name=novel_name or "novel"
+                    )
                 )
+            finally:
+                loop.close()
 
-                # Stream output
-                output_lines = []
-                for line in iter(process.stdout.readline, ''):
-                    line = line.strip()
-                    if not line:
-                        continue
+            if log_callback:
+                log_callback("info", f"Found {len(novel_info.chapters)} chapters")
 
-                    output_lines.append(line)
+            # Save to dataset
+            dataset_path = self.crawler.save_to_dataset(
+                novel_info,
+                self.output_dir,
+                format="txt"
+            )
 
-                    if log_callback:
-                        log_callback("info", f"[LNCrawl] {line}")
+            if log_callback:
+                log_callback("info", f"Saved to: {dataset_path}")
 
-                    # Try to parse progress
-                    if progress_callback:
-                        progress = self._parse_progress(line)
-                        if progress is not None:
-                            progress_callback(progress)
+            if progress_callback:
+                progress_callback(100.0)
 
-                # Wait for completion
-                returncode = process.wait(timeout=600)  # 10 minute timeout
+            return str(dataset_path)
 
-                if returncode != 0:
-                    error_msg = '\n'.join(output_lines[-20:])  # Last 20 lines
-                    if log_callback:
-                        log_callback("error", f"LNCrawl failed with code {returncode}")
-                        log_callback("error", error_msg)
-                    last_error = RuntimeError(f"LNCrawl exited with code {returncode}\n{error_msg}")
-                    continue  # Retry
-
-                # Find EPUB file
-                epub_files = list(self.output_dir.glob("*.epub"))
-                if not epub_files:
-                    if log_callback:
-                        log_callback("error", "No EPUB file generated")
-                    last_error = RuntimeError("No EPUB file generated by LNCrawl")
-                    continue  # Retry
-
-                epub_path = epub_files[0]
-
-                if log_callback:
-                    log_callback("info", f"EPUB saved to: {epub_path}")
-
-                if progress_callback:
-                    progress_callback(100.0)
-
-                return str(epub_path)
-
-            except FileNotFoundError:
-                error_msg = "Python or LNCrawl not found. Ensure both are in PATH."
-                if log_callback:
-                    log_callback("error", error_msg)
-                last_error = RuntimeError(error_msg)
-                break  # Don't retry for missing dependencies
-
-            except subprocess.TimeoutExpired:
-                process.kill()
-                error_msg = "Crawl timed out after 10 minutes"
-                if log_callback:
-                    log_callback("error", error_msg)
-                last_error = RuntimeError(error_msg)
-                continue  # Retry timeout
-
-            except Exception as e:
-                if log_callback:
-                    log_callback("error", f"Crawl error: {str(e)}")
-                last_error = e
-                continue  # Retry
-
-        # If we exhausted all retries, raise the last error
-        if log_callback:
-            log_callback("error", f"Crawl failed after {max_attempts} attempts")
-        raise last_error if last_error else RuntimeError("Crawl failed for unknown reason")
-
-    def _parse_progress(self, line: str) -> Optional[float]:
-        """
-        Try to parse progress from LNCrawl output.
-
-        LNCrawl might output progress like:
-        - "Downloaded 10 of 100 chapters"
-        - "Progress: 50%"
-
-        Args:
-            line: Output line from LNCrawl
-
-        Returns:
-            Progress percentage (0-100) or None
-        """
-        import re
-
-        # Try to match percentage
-        percent_match = re.search(r'(\d+)%', line)
-        if percent_match:
-            try:
-                return float(percent_match.group(1))
-            except ValueError:
-                pass
-
-        # Try to match "X of Y" pattern
-        of_match = re.search(r'(\d+)\s+of\s+(\d+)', line)
-        if of_match:
-            try:
-                current = float(of_match.group(1))
-                total = float(of_match.group(2))
-                if total > 0:
-                    return (current / total) * 100
-            except ValueError:
-                pass
-
-        return None
+        except Exception as e:
+            if log_callback:
+                log_callback("error", f"Crawl error: {str(e)}")
+            raise RuntimeError(f"SageCrawler failed: {str(e)}")
 
     def cleanup(self):
         """Clean up temp directory"""
         if self.output_dir.exists():
+            import shutil
             try:
                 shutil.rmtree(self.output_dir)
             except Exception as e:

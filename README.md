@@ -1,433 +1,262 @@
-# SageMTL - Machine Translation Toolchain
+# SageMTL
 
-**SageMTL** (Sage Machine Translation Library) is a comprehensive machine translation and language processing platform that provides a complete **Import → Process → Export** workflow for cleaning, crawling, and translating multilingual text content.
+**Offline Machine Translation Desktop Application for Web Novels**
 
-## 🚀 What's New in v2
+A native desktop application for translating web novels (Chinese, Japanese, Korean → English) using offline translation models with custom glossary support and web novel crawling capabilities.
 
-- **Novel Crawler** with automatic chapter pattern detection and LNCrawl integration
-- **Modular API** under `/api/*` with organized routers
-- **Dataset Import** with drag-drop file upload (`.txt`, `.md`, `.html`, `.jsonl`, `.epub`)
-- **Novel Management** with chapter tracking and metadata
-- **Compose Pipeline** - unified Clean + Translate + Glossary workflow
-- **Real-time Jobs** with WebSocket progress streaming and detailed metrics
-- **Enhanced Glossary** with case-sensitivity and word boundaries
-- **Settings Management** - UI and API for config.toml persistence
+---
 
-📖 **[See IMPLEMENTATION.md for complete feature list](./IMPLEMENTATION.md)**
-📘 **[Read HOWTORUN.md for detailed usage guide](./HOWTORUN.md)**
+## 🌟 Features
 
-## Features
+### Core Translation
+- **100% Offline Translation** - Uses Argos Translate with locally installed language models (no internet required after setup)
+- **Custom Glossary Support** - CSV-based term replacement for character names, cultivation terms, etc.
+  - Supports both `source,target` and `English,Chinese` column formats
+  - Applied before translation for consistent terminology
+- **Multiple Input Formats** - Import from TXT, EPUB, or crawl directly from URLs
+- **Multiple Export Formats** - Save as TXT, EPUB, or Markdown
 
-- **Text Cleaning**: Normalize text with configurable options (smart quotes, em-dashes, Unicode normalization, etc.)
-- **HTML Crawling**: Extract structured content from HTML with boilerplate removal + chapter extraction
-- **Translation Queue**: Asynchronous translation job processing with pluggable providers
-- **Dataset Management**: Import, register, and manage datasets (text, novels, translations)
-- **Glossary System**: CSV/JSON glossaries with case-sensitive matching and word boundaries
-- **Multiple Interfaces**:
-  - **CLI**: Command-line interface for automation
-  - **TUI**: Interactive terminal UI with Textual
-  - **REST API v2**: FastAPI with modular routers, WebSockets, and file uploads
-  - **Web UI**: React 19 dashboard (in `ui/` directory)
-- **Batch Processing**: High-throughput directory processing with resume capability
-- **Configuration**: Layered config (defaults → TOML → ENV vars → CLI args)
+### Novel Crawling
+- **SageCrawler** - Fast async crawler with automatic chapter pattern detection
+- **Automatic Chapter Detection** - Recognizes common URL patterns (`chapter-N`, `/N/`, `ch-N.html`, etc.)
+- **Wide Site Support** - Works with many popular web novel sites through intelligent pattern matching
 
-## Quickstart
+### Desktop Experience
+- **Native Qt Interface** - Built with PySide6 for responsive native performance
+- **Side-by-Side Preview** - Original and translated text comparison
+- **Real-time Progress** - Live job status with detailed logging
+- **Batch Processing** - Queue multiple files or URLs for translation
+- **Content Deduplication** - Automatic detection of duplicate imports using content hashing
 
-```bash
-# create and activate a virtual environment
-python -m venv .venv
-source .venv/bin/activate
+---
 
-# install the project with development helpers
-pip install -e .[dev]
+## 📋 Requirements
 
-# explore the command line help
-sagemtl --help
+- **Python 3.11+** (3.13 recommended for latest datetime features)
+- **Operating Systems**: Windows, macOS, Linux
+- **Disk Space**: ~500MB for base models (Chinese), ~1GB+ for multiple languages
+
+---
+
+## 🚀 Quick Start
+
+### Installation
+
+1. **Clone the repository**
+   ```powershell
+   git clone https://github.com/Blood-Dawn/sagemtl.git
+   cd sagemtl
+   ```
+
+2. **Set up Python environment**
+   ```powershell
+   python -m venv venv
+   .\venv\Scripts\Activate.ps1
+   ```
+
+3. **Install dependencies**
+   ```powershell
+   pip install -r requirements-desktop.txt
+   ```
+
+4. **Install translation models**
+   ```python
+   python -c "import argostranslate.package; argostranslate.package.update_package_index(); available = argostranslate.package.get_available_packages(); chinese = next((p for p in available if p.from_code == 'zh' and p.to_code == 'en'), None); argostranslate.package.install_from_path(chinese.download())"
+   ```
+   
+   For additional languages (Japanese, Korean):
+   ```python
+   # Japanese
+   python -c "import argostranslate.package; argostranslate.package.update_package_index(); available = argostranslate.package.get_available_packages(); japanese = next((p for p in available if p.from_code == 'ja' and p.to_code == 'en'), None); argostranslate.package.install_from_path(japanese.download())"
+   
+   # Korean
+   python -c "import argostranslate.package; argostranslate.package.update_package_index(); available = argostranslate.package.get_available_packages(); korean = next((p for p in available if p.from_code == 'ko' and p.to_code == 'en'), None); argostranslate.package.install_from_path(korean.download())"
+   ```
+
+5. **Launch the application**
+   ```powershell
+   python -m sagemtl_desktop.main
+   ```
+
+---
+
+## 📖 Usage Examples
+
+### Workflow 1: Translate Local Files
+
+1. Launch the app: `python -m sagemtl_desktop.main`
+2. Click **"Import Files"** → Select your TXT/EPUB files
+3. (Optional) Load glossary: **"Load Glossary"** → Select CSV file
+4. Select files from the list → Click **"Translate"**
+5. Monitor progress in the logs panel
+6. Click **"Export"** → Choose format (TXT/EPUB/Markdown) and save location
+
+### Workflow 2: Crawl and Translate Web Novels
+
+1. Launch the app
+2. Click **"Fetch from URL"**
+3. Enter novel URL (e.g., `https://example.com/novel/chapter-1`)
+4. Wait for automatic chapter detection and download
+5. (Optional) Load glossary for consistent terminology
+6. Click **"Translate"** on the imported content
+7. Export when complete
+
+### Glossary Format
+
+Create a CSV file with one of these formats:
+
+**Format 1: source/target columns**
+```csv
+source,target
+道,Dao
+修真,Cultivation
+金丹,Golden Core
 ```
 
-## Command overview
-
-Each pipeline has a dedicated sub-command. Pass `--help` to any command to see the
-available options.
-
-### Cleaning
-
-Clean single files or entire collections. The normaliser exposes toggles for smart
-quotes, dash/minus handling, blank-line collapsing and the trailing newline policy.
-
-```bash
-# clean a single file to stdout
-sagemtl clean --in raw.txt
-
-# batch clean a directory, writing JSONL entries with text + metadata
-sagemtl clean batch data/raw --out cleaned.jsonl
+**Format 2: English/Chinese columns**
+```csv
+English,Chinese
+Dao,道
+Cultivation,修真
+Golden Core,金丹
 ```
 
-### Crawling
+The app automatically detects which format you're using.
 
-Extract structured blocks from HTML using the built-in heuristics (boilerplate
-removal, selector allow/block lists and CRLF normalisation):
+---
 
-```bash
-sagemtl crawl --file page.html --allow "article > p" --block ".sidebar"
-```
-
-**Novel Crawling** with automatic chapter pattern detection:
-
-```bash
-# Install lightnovel-crawler (optional)
-pip install 'sagemtl[lncrawl]'
-
-# Crawl a novel - auto-detects chapter patterns
-sagemtl crawl novel https://example.com/novel/chapter-1 --start 1 --end 50 --name "my-novel"
-
-# Supported patterns: /chapter-1, /ch1/, /1/, /1.html, etc.
-# Falls back to built-in crawler if URL not supported by LNCrawl
-```
-
-### Translation queue
-
-Translations are queued and processed by an in-process worker. Glossaries can be
-provided as CSV term→replacement maps.
-
-```bash
-sagemtl translate "Hello world" --src-lang en --tgt-lang fr --wait
-```
-
-### Dataset registry
-
-Datasets are registered under `~/.sagemtl/data` (override with
-`SAGEMTL_DATA_DIR`).
-
-```bash
-# list known datasets
-sagemtl datasets list
-
-# add a JSONL dataset and export it as CSV
-sagemtl datasets add my-set samples.jsonl
-sagemtl datasets export my-set --format csv --out export.csv
-```
-
-### Job management
-
-Translation jobs are persisted to `~/.sagemtl/jobs.json`. Inspect them via the
-`jobs` sub-commands.
-
-```bash
-sagemtl jobs list
-sagemtl jobs tail <job-id>
-sagemtl jobs purge
-```
-
-### Settings
-
-Configuration lives in `~/.sagemtl/config.toml`. The CLI can show or edit values:
-
-```bash
-sagemtl settings show
-sagemtl settings set newline_mode "\"crlf\""
-```
-
-### HTTP bridge
-
-Start a FastAPI server that mirrors the CLI functionality:
-
-```bash
-# requires uvicorn to be installed in the environment
-sagemtl serve --host 127.0.0.1 --port 8000
-
-# or run via uvicorn directly
-uvicorn sagemtl.serve.api:app
-```
-
-The API enables cross-origin requests from `http://localhost:5173` for UI
-development.
-
-### Terminal UI
-
-Launch the interactive Textual-based TUI for experimentation:
-
-```bash
-sagemtl tui
-```
-
-The TUI provides tabs for Clean, Crawl, Batch, Translate, and Settings with live
-preview and status logging.
-
-### Web UI
-
-The React dashboard is located in the `ui/` directory:
-
-```bash
-cd ui
-npm install
-npm run dev
-```
-
-Visit `http://localhost:5173` to access the web interface. The UI provides pages for:
-
-- **/clean** - Text cleaning with before/after diff viewer
-- **/crawl** - HTML extraction with CSS selector configuration
-- **/translate** - Translation job management with progress tracking
-- **/datasets** - Dataset registry with table view
-- **/jobs** - Job history and monitoring with customizable grid layout
-- **/settings** - Configuration editor
-
-### Grid Layout System
-
-The Jobs page (and other pages) support **drag-and-drop rearrangeable widgets** using [react-grid-layout](https://github.com/react-grid-layout/react-grid-layout). Users can customize their workspace by dragging widgets to reposition them and resizing them to fit their workflow.
-
-**User Features:**
-- **Drag widgets** - Click and drag any widget by its title bar (indicated by 3-dot handle)
-- **Resize widgets** - Drag the bottom-right corner of any widget to resize
-- **Lock/unlock layout** - Toggle the lock button to prevent accidental changes
-- **Reset to defaults** - Click the reset button to restore the original layout
-- **Persistent layouts** - Changes are automatically saved to browser localStorage
-
-**Developer Usage:**
-
-To add grid layout to a page, use the `LayoutManager` component:
-
-```tsx
-import { LayoutManager, Widget } from '@/components/layout-manager';
-
-// Define default layout for your widgets
-const defaultLayout = [
-  { i: 'widget1', x: 0, y: 0, w: 6, h: 2, minW: 3, minH: 2 },
-  { i: 'widget2', x: 6, y: 0, w: 6, h: 2, minW: 3, minH: 2 },
-  { i: 'widget3', x: 0, y: 2, w: 12, h: 4, minW: 6, minH: 3 },
-];
-
-function MyPage() {
-  return (
-    <LayoutManager
-      layoutKey="myPage"
-      defaultLayout={defaultLayout}
-      rowHeight={100}
-      cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
-    >
-      <Widget key="widget1" id="widget1" title="Statistics">
-        {/* Your content here */}
-      </Widget>
-      <Widget key="widget2" id="widget2" title="Controls">
-        {/* Your content here */}
-      </Widget>
-      <Widget key="widget3" id="widget3" title="Data Table">
-        {/* Your content here */}
-      </Widget>
-    </LayoutManager>
-  );
-}
-```
-
-**Layout Configuration:**
-- `i` - Unique widget identifier (must match Widget's `key` and `id`)
-- `x` - Column position (0-based, max = cols value)
-- `y` - Row position (0-based)
-- `w` - Width in columns (1-12 for lg breakpoint)
-- `h` - Height in rows
-- `minW`, `minH` - Minimum widget dimensions
-- `maxW`, `maxH` - Maximum widget dimensions (optional)
-
-**Responsive Breakpoints:**
-- `lg` (1200px+) - 12 columns
-- `md` (996px+) - 10 columns
-- `sm` (768px+) - 6 columns
-- `xs` (480px+) - 4 columns
-- `xxs` (<480px) - 2 columns
-
-**Storage:** Layouts are persisted to `localStorage` with keys like `sagemtl.layout.jobsPage`. If storage is corrupted or empty, the default layout is used.
-
-## Configuration
-
-### Config File
-
-SageMTL stores configuration in `~/.sagemtl/config.toml`. Create it manually or use:
-
-```bash
-sagemtl settings set newline_mode '"lf"'
-sagemtl settings set thread_count 8
-```
-
-Example config:
-
-```toml
-newline_mode = "lf"
-thread_count = 8
-clean_input_path = "-"
-crawl_outdir = "out"
-```
-
-### Environment Variables
-
-Override settings with `SAGEMTL_` prefixed environment variables:
-
-```bash
-export SAGEMTL_THREAD_COUNT=4
-export SAGEMTL_NEWLINE_MODE=crlf
-export SAGEMTL_CLEAN__INPUT_PATH=/tmp/input  # __ for nested keys
-```
+## 🏗️ Architecture
 
 ### Directory Structure
 
-On first run, SageMTL creates:
-
-```
-~/.sagemtl/
-├── config.toml          # Configuration file
-├── jobs.json            # Translation job storage
-└── data/                # Registered datasets
-```
-
-Override with:
-- `SAGEMTL_CONFIG` - Config file path
-- `SAGEMTL_JOBS_PATH` - Jobs storage path
-- `SAGEMTL_DATA_DIR` - Dataset directory
-
-## Optional Features
-
-### Novel Crawler with LNCrawl
-
-For enhanced novel crawling with support for 600+ novel sites:
-
-```bash
-pip install 'sagemtl[lncrawl]'
-```
-
-This installs [lightnovel-crawler](https://github.com/dipu-bd/lightnovel-crawler) (GPLv3) which provides:
-- Support for RoyalRoad, Webnovel, Wuxiaworld, and 600+ other sites
-- Automatic chapter detection and metadata extraction
-- EPUB generation
-- Cover image download
-
-SageMTL will automatically use LNCrawl when available, or fall back to the built-in pattern-based crawler.
-
-## Development
-
-### Install for Development
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-pip install -e .[dev]
-
-# Optional: Install LNCrawl for novel crawling
-pip install -e .[lncrawl]
-```
-
-### Run Tests
-
-```bash
-pytest
-pytest --cov=sagemtl --cov-report=html
-```
-
-### Code Quality
-
-```bash
-ruff check sagemtl/
-ruff format sagemtl/
-pre-commit run --all-files
-```
-
-### VS Code Configuration
-
-The project includes a `.vscode/settings.json` file with recommended settings:
-
-- **Terminal Profile**: Default terminal is set to PowerShell on Windows, bash on Linux, zsh on macOS
-- **Python Formatting**: Auto-format on save with Black (120 char line length)
-- **Linting**: Ruff linting enabled
-- **Import Organization**: Auto-organize imports on save
-
-**To change the default terminal profile**:
-1. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS)
-2. Search for **"Terminal: Select Default Profile"**
-3. Choose your preferred shell (PowerShell, Command Prompt, Git Bash, WSL, etc.)
-
-The setting is stored in `.vscode/settings.json` under `terminal.integrated.defaultProfile.windows`.
-
-### Build Documentation
-
-```bash
-mkdocs serve
-# Visit http://localhost:8000
-```
-
-## Project Structure
-
 ```
 sagemtl/
-├── sagemtl/              # Python package
-│   ├── cli.py           # Typer CLI
-│   ├── config.py        # Configuration management
-│   ├── clean/           # Text cleaning module
-│   ├── crawl/           # HTML crawling module
-│   ├── translate/       # Translation queue & providers
-│   ├── datasets/        # Dataset registry
-│   ├── jobs/            # Job storage
-│   ├── batch/           # Batch processing
-│   ├── tui/             # Textual TUI
-│   └── serve/           # FastAPI server
-├── ui/                   # React frontend
-│   ├── src/
-│   │   ├── pages/       # Page components
-│   │   ├── components/  # Reusable components
-│   │   └── api/         # API client
-├── tests/               # Test suite
-├── docs/                # MkDocs documentation
-└── pyproject.toml       # Package metadata
+├── sagemtl_desktop/          # Desktop application
+│   ├── main.py              # Application entry point
+│   ├── core/                # Business logic
+│   │   ├── epub_extractor.py    # EPUB text extraction
+│   │   ├── glossary.py          # Glossary term replacement
+│   │   ├── import_manager.py   # Content deduplication
+│   │   ├── job_manager.py       # Background job orchestration
+│   │   └── translator.py        # Argos Translate integration
+│   ├── ui/                  # PySide6 GUI components
+│   │   ├── main_window.py       # Main application window
+│   │   └── ...
+│   └── resources/           # Icons, stylesheets
+│
+├── sagemtl/                 # Core library (reusable)
+│   ├── crawl/              # Web crawling
+│   │   └── novel_crawler.py     # SageCrawler implementation
+│   ├── translate/          # Translation pipeline
+│   ├── clean/              # Text normalization
+│   └── jobs/               # Job state management
+│
+├── tests/                   # Test suite
+├── requirements-desktop.txt # Desktop dependencies
+└── pyinstaller-desktop.spec # Build configuration
 ```
 
-## API v2 Endpoints
+### Tech Stack
 
-Start the API server with:
-```bash
-sagemtl serve --v2 --port 8000
+- **UI Framework**: PySide6 (Qt6) - Native desktop widgets
+- **Translation**: Argos Translate - Offline neural translation models
+- **Crawling**: httpx (async HTTP) + BeautifulSoup4 (HTML parsing)
+- **EPUB Processing**: zipfile + xml.etree.ElementTree + ebooklib
+- **Job Management**: Threading + custom job queue system
+- **Testing**: pytest + pytest-asyncio
+
+---
+
+## 🔨 Building Executables
+
+To create standalone executables:
+
+```powershell
+# Install PyInstaller
+pip install pyinstaller
+
+# Build executable (uses pyinstaller-desktop.spec)
+pyinstaller pyinstaller-desktop.spec
+
+# Output: dist/SageMTL-Desktop/SageMTL-Desktop.exe
 ```
 
-### Compose (Unified Pipeline)
-- `POST /api/compose/clean` - Clean text with glossary support
-- `POST /api/compose/translate` - Queue translation with pre/post glossary
-- `POST /api/compose/pipeline` - Full workflow: Clean → Translate → Save
+The executable bundles Python runtime and dependencies but **does not include translation models**. Users must still install Argos Translate models on first run.
 
-### Datasets (Import & Management)
-- `GET /api/datasets` - List all datasets
-- `POST /api/datasets/import` - Import files (multipart upload)
-- `GET /api/datasets/novels` - List novel-type datasets
-- `GET /api/datasets/{id}` - Get dataset details
-- `GET /api/datasets/{id}/files` - List dataset files
-- `DELETE /api/datasets/{id}` - Delete dataset
+---
 
-### Crawl (Chapter Extraction)
-- `POST /api/crawl/novel` - Crawl novel with pattern detection (uses LNCrawl if available)
-- `POST /api/crawl/run` - Crawl chapters (async job)
-- `POST /api/crawl/extract` - Extract HTML (sync)
+## 🌐 Supported Languages
 
-### Jobs (Real-time Tracking)
-- `GET /api/jobs` - List all jobs with metadata (runtime, bytes, provider)
-- `GET /api/jobs/{id}` - Get job status with logs
-- `DELETE /api/jobs/{id}` - Cancel job
-- `POST /api/jobs/{id}/retry` - Retry failed job
-- `WebSocket /api/jobs/ws/{id}` - Real-time progress stream
+### Translation Directions
+- Chinese (Simplified/Traditional) → English
+- Japanese → English  
+- Korean → English
 
-### Settings (Configuration Management)
-- `GET /api/settings` - Get current settings
-- `PUT /api/settings` - Update settings (persists to config.toml)
-- `POST /api/settings/reset` - Reset to defaults
+### Novel Sources
+- Direct URL crawling: Works with any site that has sequential chapter URLs
+- Automatic pattern detection for common chapter numbering schemes
+- Supports popular sites including NovelUpdates, WuxiaWorld, RoyalRoad, ScribbleHub, and many more
 
-### Legacy Endpoints (v1 - backward compatible)
-- `POST /clean` - Clean text
-- `POST /crawl` - Extract from HTML
-- `POST /translate` - Queue translation job
-- `GET /jobs` - List jobs
-- `GET /datasets` - List datasets
+---
 
-Visit `http://localhost:8000/docs` for interactive API documentation.
+## 🧪 Running Tests
 
-## License
+```powershell
+# Install test dependencies
+pip install pytest pytest-asyncio
 
-See [LICENSE](LICENSE) file for details.
+# Run all tests
+pytest
 
-## Contributing
+# Run specific test file
+pytest tests/test_novel_crawler.py
 
-Contributions welcome! Please check the existing issues or create a new one to discuss your ideas.
+# Run with verbose output
+pytest -v
+```
+
+---
+
+## 📚 Documentation
+
+- **[DESKTOP_QUICKSTART.md](DESKTOP_QUICKSTART.md)** - 5-minute setup guide with workflow examples
+- **[README_DESKTOP.md](README_DESKTOP.md)** - Complete desktop app documentation
+- **[DESKTOP_APP_ARCHITECTURE.md](DESKTOP_APP_ARCHITECTURE.md)** - Technical architecture deep dive
+
+---
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🤝 Support & Contributing
+
+- **Issues**: [GitHub Issues](https://github.com/Blood-Dawn/sagemtl/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Blood-Dawn/sagemtl/discussions)
+- **Author**: Blood-Dawn
+
+---
+
+## 💡 Inspiration
+
+This project was inspired by and builds upon ideas from:
+- **[lightnovel-crawler](https://github.com/dipu-bd/lightnovel-crawler)** - Excellent web novel crawler supporting 2000+ sites
+- **Argos Translate** - Open-source offline neural machine translation
+
+---
+
+## ⚠️ Important Notes
+
+1. **First Launch**: Translation models (~500MB+) must be downloaded before first use
+2. **Offline Mode**: Once models are installed, the app works 100% offline
+3. **Translation Quality**: Argos Translate provides functional translations but may not match commercial services
+4. **Glossary**: Custom glossaries significantly improve consistency for domain-specific terms
+5. **EPUB Support**: Both import (extraction) and export (creation) are supported
+6. **Content Hashing**: Duplicate content is automatically detected to prevent re-importing the same files
+
+---
+
+**Version**: 0.0.1  
+**Last Updated**: 2025

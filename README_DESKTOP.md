@@ -6,7 +6,7 @@ A Windows desktop application for processing bulk machine-translated (MTL) novel
 
 ✅ **Fully Offline** - No cloud calls, all processing happens locally
 ✅ **Argos Translate** - Open-source offline translation engine
-✅ **Novel Crawling** - Fetch novels from URLs using LNCrawl
+✅ **Novel Crawling** - Fetch novels from URLs using SageCrawler
 ✅ **Custom Glossary** - Apply CSV glossary for consistent terminology
 ✅ **EPUB Support** - Import and extract EPUB files
 ✅ **Side-by-Side Preview** - View original and cleaned text
@@ -94,7 +94,7 @@ The built application will be in `dist/SageMTL/`
 - Paste novel URL in the "Fetch Novel from URL" field
 - Click "Fetch"
 - Configure chapter range in the dialog
-- LNCrawl will download the novel as EPUB and extract it
+- SageCrawler will automatically detect chapters and download them
 
 ### 2. Load Glossary (Optional)
 
@@ -195,7 +195,7 @@ sagemtl_desktop/
 │   ├── job_manager.py         # Job queue with threading
 │   ├── translator.py          # Argos Translate wrapper
 │   ├── glossary.py            # CSV glossary processor
-│   ├── crawler.py             # LNCrawl subprocess wrapper
+│   ├── crawler.py             # SageCrawler wrapper
 │   ├── epub_extractor.py      # EPUB parsing
 │   └── exporter.py            # Export cleaned text
 │
@@ -222,10 +222,10 @@ sagemtl_desktop/
 
 ### Novel Crawling
 
-- **LNCrawl Integration**: Uses Lightnovel Crawler as subprocess
-- **Supported Sites**: 600+ novel sites (RoyalRoad, Webnovel, Wuxiaworld, etc.)
-- **EPUB Output**: Downloads as EPUB, then extracts chapters
-- **Error Handling**: Captures and displays LNCrawl output/errors
+- **SageCrawler**: Built-in novel crawler with automatic chapter pattern detection
+- **Wide Compatibility**: Works with many popular novel sites through intelligent pattern matching
+- **Text Output**: Downloads chapters directly as text
+- **Error Handling**: Captures and displays crawler output/errors
 
 ### Job System
 
@@ -262,15 +262,6 @@ argostranslate.package.update_package_index()
 available = argostranslate.package.get_available_packages()
 pkg = [p for p in available if p.from_code == 'zh' and p.to_code == 'en'][0]
 argostranslate.package.install_from_path(pkg.download())
-```
-
-### LNCrawl not found
-
-**Error**: `LNCrawl not found. Install with: pip install lightnovel-crawler`
-
-**Solution**:
-```bash
-pip install lightnovel-crawler
 ```
 
 ### EPUB extraction failed
@@ -349,7 +340,6 @@ Contributions welcome! Please:
 ## Acknowledgments
 
 - **Argos Translate**: Open-source neural translation
-- **LNCrawl**: Lightnovel crawler (GPLv3)
 - **PySide6**: Qt for Python
 
 ## Support

@@ -341,7 +341,7 @@ class MainWindow(QMainWindow):
 
             # Start crawl worker
             def crawl_processor(job, progress_cb, log_cb):
-                # Crawl with LNCrawl
+                # Crawl with SageCrawler
                 epub_path = self.crawler.crawl_novel(
                     url=options['url'],
                     novel_name=options.get('novel_name'),

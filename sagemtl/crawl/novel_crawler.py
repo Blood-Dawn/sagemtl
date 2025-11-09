@@ -1,9 +1,9 @@
-"""Novel crawler with chapter detection and optional lightnovel-crawler integration.
+"""SageCrawler - Novel crawler with automatic chapter detection.
 
 This module provides:
 1. Built-in chapter detection for common novel site patterns
-2. Optional integration with lightnovel-crawler (GPLv3) when available
-3. Automatic URL pattern recognition
+2. Automatic URL pattern recognition
+3. Fast async HTTP requests for chapter fetching
 """
 
 from __future__ import annotations
@@ -298,27 +298,3 @@ class NovelCrawler:
         meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
         return dataset_dir
-
-
-def try_lightnovel_crawler_integration(url: str, output_dir: Path) -> Optional[Path]:
-    """
-    Attempt to use lightnovel-crawler if it's installed.
-
-    This is an optional integration for users who have lightnovel-crawler
-    installed separately. The lightnovel-crawler package is GPLv3 licensed.
-
-    Returns the dataset path if successful, None otherwise.
-
-    Note: This function is deprecated. Use lncrawl_adapter.fetch_novel() instead.
-    """
-    try:
-        # Try to import lightnovel-crawler (optional dependency)
-        from lncrawl.core.app import App  # noqa: F401
-
-        # This integration is now handled by lncrawl_adapter.py
-        print("lightnovel-crawler available - use lncrawl_adapter.fetch_novel()")
-        return None
-
-    except ImportError:
-        print("lightnovel-crawler not installed (optional GPLv3 component)")
-        return None

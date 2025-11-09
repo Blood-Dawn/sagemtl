@@ -97,7 +97,7 @@ class CrawlOptionsDialog(QDialog):
 
         # Note
         note = QLabel(
-            "Note: This will use LNCrawl to download chapters from the novel site.\n"
+            "Note: This will use SageCrawler to download chapters from the novel site.\n"
             "The process may take several minutes depending on the number of chapters."
         )
         note.setWordWrap(True)
@@ -164,7 +164,7 @@ class AboutDialog(QDialog):
             "<h3>Features:</h3>"
             "<ul>"
             "<li>Offline translation with Argos Translate</li>"
-            "<li>Novel crawling with LNCrawl</li>"
+            "<li>Novel crawling with SageCrawler</li>"
             "<li>Custom glossary support (CSV)</li>"
             "<li>EPUB extraction and export</li>"
             "<li>Side-by-side preview</li>"

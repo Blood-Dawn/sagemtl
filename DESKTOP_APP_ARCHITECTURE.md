@@ -7,7 +7,7 @@ This document describes the complete architecture for the rebuilt sageMTL Window
 - **Language:** Python 3.11+
 - **UI Framework:** PySide6 (Qt6)
 - **Translation Engine:** Argos Translate (offline models)
-- **Crawler:** Lightnovel Crawler (LNCrawl) via subprocess
+- **Crawler:** SageCrawler with automatic chapter detection
 - **Packaging:** PyInstaller (one-folder mode)
 - **Platform:** Windows (primary), cross-platform capable
 
@@ -24,7 +24,7 @@ sagemtl/
 │   │   ├── job_manager.py    # Job queue with threading
 │   │   ├── translator.py     # Argos Translate wrapper
 │   │   ├── glossary.py       # CSV glossary processor
-│   │   ├── crawler.py        # LNCrawl subprocess wrapper
+│   │   ├── crawler.py        # SageCrawler wrapper
 │   │   ├── epub_extractor.py # EPUB parsing and extraction
 │   │   ├── exporter.py       # Export cleaned text
 │   │   └── models.py         # Data models (Job, ProcessingOptions, etc.)
@@ -458,23 +458,20 @@ class GlossaryProcessor:
 ### 5. Crawler (`core/crawler.py`)
 
 **Responsibilities:**
-- Call LNCrawl as subprocess
-- Capture stdout/stderr
-- Extract EPUB output
+- Use SageCrawler for novel downloading
+- Automatic chapter pattern detection
+- Extract chapters as text
 - Return text to job manager
 
 ```python
-import subprocess
-import tempfile
-import shutil
-from pathlib import Path
-from typing import Callable, Optional
+from sagemtl.crawl.novel_crawler import NovelCrawler
 
 class Crawler:
-    """Wrapper for Lightnovel Crawler (LNCrawl) subprocess"""
+    """Wrapper for SageCrawler - built-in novel crawler"""
 
     def __init__(self):
         self.output_dir = Path(tempfile.mkdtemp(prefix="sagemtl_crawl_"))
+        self.crawler = NovelCrawler()
 
     def crawl_novel(
         self,
@@ -486,7 +483,7 @@ class Crawler:
         log_callback: Optional[Callable[[str, str], None]] = None
     ) -> str:
         """
-        Crawl novel using LNCrawl subprocess.
+        Crawl novel using SageCrawler.
 
         Args:
             url: Novel URL
@@ -497,85 +494,41 @@ class Crawler:
             log_callback: Log callback
 
         Returns:
-            Path to downloaded EPUB file
+            Path to text file containing chapters
         """
         if log_callback:
-            log_callback("info", f"Starting crawl: {url}")
+            log_callback("info", f"Starting SageCrawler: {url}")
 
-        # Build LNCrawl command
-        cmd = [
-            "lncrawl",
-            "--suppress",  # Non-interactive mode
-            "--format", "epub",
-            "--output", str(self.output_dir),
-            "--source", url
-        ]
-
-        if novel_name:
-            cmd.extend(["--novel", novel_name])
-
-        if start_chapter is not None:
-            cmd.extend(["--first", str(start_chapter)])
-
-        if end_chapter is not None:
-            cmd.extend(["--last", str(end_chapter)])
+        # Use SageCrawler to fetch chapters
+        novel_info = self.crawler.crawl_novel(
+            start_url=url,
+            start_chapter=start_chapter or 1,
+            end_chapter=end_chapter or 999,
+            dataset_name=novel_name or "novel"
+        )
 
         if log_callback:
-            log_callback("info", f"Running: {' '.join(cmd)}")
+            log_callback("info", f"Found {len(novel_info.chapters)} chapters")
 
-        try:
-            # Run subprocess
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
-            )
+        # Save to dataset
+        dataset_path = self.crawler.save_to_dataset(
+            novel_info,
+            self.output_dir,
+            format="txt"
+        )
 
-            # Stream output
-            for line in process.stdout:
-                if log_callback:
-                    log_callback("info", f"[LNCrawl] {line.strip()}")
+        if log_callback:
+            log_callback("info", f"Saved to: {dataset_path}")
 
-                # Parse progress if possible
-                # (LNCrawl might output progress in a parseable format)
-                if progress_callback and "%" in line:
-                    try:
-                        pct = float(line.split("%")[0].split()[-1])
-                        progress_callback(pct)
-                    except:
-                        pass
+        if progress_callback:
+            progress_callback(100.0)
 
-            # Wait for completion
-            returncode = process.wait()
-
-            if returncode != 0:
-                stderr = process.stderr.read()
-                if log_callback:
-                    log_callback("error", f"LNCrawl failed: {stderr}")
-                raise RuntimeError(f"LNCrawl exited with code {returncode}: {stderr}")
-
-            # Find EPUB file
-            epub_files = list(self.output_dir.glob("*.epub"))
-            if not epub_files:
-                raise RuntimeError("No EPUB file generated")
-
-            epub_path = epub_files[0]
-
-            if log_callback:
-                log_callback("info", f"EPUB saved to: {epub_path}")
-
-            return str(epub_path)
-
-        except FileNotFoundError:
-            if log_callback:
-                log_callback("error", "LNCrawl not found. Install with: pip install lightnovel-crawler")
-            raise RuntimeError("LNCrawl not installed")
+        return str(dataset_path)
 
     def cleanup(self):
         """Clean up temp directory"""
         if self.output_dir.exists():
+            import shutil
             shutil.rmtree(self.output_dir)
 ```
 
@@ -871,11 +824,10 @@ Pipeline for each job:
 4. GlossaryProcessor.apply_after(translated_text)
 5. Store in Job.cleaned_text
 
-### LNCrawl Integration
-- Crawler creates temp directory
-- Calls `lncrawl --suppress --format epub ...`
-- Captures stdout/stderr to log
-- On success: EPUBExtractor extracts text
+### SageCrawler Integration
+- Crawler uses built-in SageCrawler with automatic chapter detection
+- Detects chapter patterns from URL structure
+- Downloads chapters directly as text
 - Text added as new job in FileListPanel
 
 ## Configuration

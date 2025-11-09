@@ -1,7 +1,7 @@
 """
 SageCrawler - First-party novel crawler for SageMTL
 
-Replaces LNCrawl with a built-in solution that supports:
+Built-in solution that supports:
 - URL or search query input
 - Multiple source adapters (FanMTL, generic, etc.)
 - Chapter range selection

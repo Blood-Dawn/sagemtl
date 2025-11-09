@@ -354,64 +354,31 @@ def crawl_novel(
     name: Annotated[Optional[str], typer.Option("--name", "-n", help="Dataset name")] = None,
     wait: Annotated[bool, typer.Option("--wait/--no-wait", help="Wait for completion")] = True,
 ) -> None:
-    """Crawl a novel using lightnovel-crawler or built-in crawler."""
-    from sagemtl.crawl.lncrawl_adapter import (
-        is_lncrawl_available,
-        check_url_support,
-        fetch_novel,
-    )
+    """Crawl a novel using SageCrawler."""
     from sagemtl.crawl.novel_crawler import NovelCrawler
 
     # Get data directory
     data_dir = Path.home() / ".sagemtl" / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Check URL support
-    is_supported, source_name = check_url_support(url)
-
-    if is_supported and is_lncrawl_available():
-        typer.echo(f"Using lightnovel-crawler ({source_name})...")
-        try:
-            dataset = fetch_novel(
-                url=url,
-                output_dir=data_dir,
-                dataset_name=name,
-                start_chapter=start,
-                end_chapter=end,
-                format="txt",
-            )
-            typer.echo(f"✓ Crawled {dataset.chapter_count} chapters")
-            typer.echo(f"✓ Saved to: {dataset.path}")
-            typer.echo(f"✓ Title: {dataset.name}")
-            if dataset.author:
-                typer.echo(f"✓ Author: {dataset.author}")
-        except Exception as exc:
-            typer.secho(f"✗ Error: {exc}", err=True, fg=typer.colors.RED)
-            raise typer.Exit(1)
-    else:
-        if is_lncrawl_available():
-            typer.echo("URL not supported by lightnovel-crawler, using built-in crawler...")
-        else:
-            typer.echo("lightnovel-crawler not installed, using built-in crawler...")
-            typer.echo("Install with: pip install 'sagemtl[lncrawl]'")
-
-        try:
-            crawler = NovelCrawler()
-            novel_info = crawler.crawl_novel(
-                start_url=url,
-                start_chapter=start,
-                end_chapter=end or 999,
-                dataset_name=name,
-            )
-            dataset_path = crawler.save_to_dataset(novel_info, data_dir, format="txt")
-            typer.echo(f"✓ Crawled {len(novel_info.chapters)} chapters")
-            typer.echo(f"✓ Saved to: {dataset_path}")
-            typer.echo(f"✓ Title: {novel_info.title}")
-            if novel_info.author:
-                typer.echo(f"✓ Author: {novel_info.author}")
-        except Exception as exc:
-            typer.secho(f"✗ Error: {exc}", err=True, fg=typer.colors.RED)
-            raise typer.Exit(1)
+    typer.echo("Using SageCrawler...")
+    try:
+        crawler = NovelCrawler()
+        novel_info = crawler.crawl_novel(
+            start_url=url,
+            start_chapter=start,
+            end_chapter=end or 999,
+            dataset_name=name,
+        )
+        dataset_path = crawler.save_to_dataset(novel_info, data_dir, format="txt")
+        typer.echo(f"✓ Crawled {len(novel_info.chapters)} chapters")
+        typer.echo(f"✓ Saved to: {dataset_path}")
+        typer.echo(f"✓ Title: {novel_info.title}")
+        if novel_info.author:
+            typer.echo(f"✓ Author: {novel_info.author}")
+    except Exception as exc:
+        typer.secho(f"✗ Error: {exc}", err=True, fg=typer.colors.RED)
+        raise typer.Exit(1)
 
 
 @settings_app.command("show", help="Show current configuration")
