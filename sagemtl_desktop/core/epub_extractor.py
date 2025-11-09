@@ -128,6 +128,8 @@ class EPUBExtractor:
             # Step 5: Extract chapters in order
             opf_dir = Path(opf_path).parent
             chapters = []
+            failed_count = 0
+            total_count = 0
 
             for item_id in spine_items:
                 if item_id not in manifest:
@@ -140,7 +142,14 @@ class EPUBExtractor:
                 if 'html' not in media_type and 'xhtml' not in media_type:
                     continue
 
-                chapter_path = str(opf_dir / href)
+                total_count += 1
+
+                # Fix: Convert Windows backslashes to forward slashes for ZIP compatibility
+                # ZIP files always use forward slashes internally, regardless of OS
+                if opf_dir == Path('.'):
+                    chapter_path = href
+                else:
+                    chapter_path = str(opf_dir / href).replace('\\', '/')
 
                 try:
                     chapter_html = zip_ref.read(chapter_path).decode('utf-8', errors='ignore')
@@ -149,12 +158,19 @@ class EPUBExtractor:
                     if chapter_text.strip():  # Only add non-empty chapters
                         chapters.append(chapter_text)
                 except KeyError:
+                    failed_count += 1
                     print(f"Warning: File not found: {chapter_path}")
                 except Exception as e:
+                    failed_count += 1
                     print(f"Warning: Failed to extract {chapter_path}: {e}")
 
             if not chapters:
-                raise ValueError("No chapters extracted from EPUB")
+                raise ValueError(
+                    f"No chapters extracted from EPUB. Failed to read {failed_count} file(s). "
+                    f"The EPUB may be corrupted or use an unsupported structure."
+                )
+
+            print(f"Successfully extracted {len(chapters)} chapters from EPUB (failed: {failed_count})")
 
             # Step 6: Concatenate with chapter markers
             full_text = ""
