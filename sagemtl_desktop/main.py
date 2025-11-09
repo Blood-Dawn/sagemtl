@@ -3,6 +3,11 @@ Main entry point for SageMTL Desktop Application.
 """
 
 import sys
+import warnings
+
+# Suppress deprecated pkg_resources warning from ctranslate2
+warnings.filterwarnings('ignore', message='.*pkg_resources is deprecated.*')
+
 from PySide6.QtWidgets import QApplication
 
 from .ui.main_window import MainWindow

@@ -126,6 +126,7 @@ class EPUBExtractor:
                 ]
 
             # Step 5: Extract chapters in order
+            # Important: ZIP files always use forward slashes, not OS-specific separators
             opf_dir = Path(opf_path).parent
             chapters = []
             extracted_count = 0
@@ -143,7 +144,12 @@ class EPUBExtractor:
                 if 'html' not in media_type and 'xhtml' not in media_type:
                     continue
 
-                chapter_path = str(opf_dir / href)
+                # CRITICAL: Use forward slashes for ZIP paths, not Path() which uses OS separators
+                # Convert Windows backslash paths to forward slash for ZIP compatibility
+                if opf_dir == Path('.'):
+                    chapter_path = href
+                else:
+                    chapter_path = str(opf_dir / href).replace('\\', '/')
 
                 try:
                     chapter_html = zip_ref.read(chapter_path).decode('utf-8', errors='ignore')
@@ -153,7 +159,7 @@ class EPUBExtractor:
                         chapters.append(chapter_text)
                         extracted_count += 1
                 except KeyError:
-                    print(f"Warning: File not found: {chapter_path}")
+                    print(f"Warning: File not found in ZIP: {chapter_path}")
                     failed_count += 1
                 except Exception as e:
                     print(f"Warning: Failed to extract {chapter_path}: {e}")
