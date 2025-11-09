@@ -424,6 +424,42 @@ sagemtl serve --v2 --port 8000
 
 Visit `http://localhost:8000/docs` for interactive API documentation.
 
+## Crawler Options
+
+SageMTL offers two crawler backends to fetch web novels:
+
+### SageCrawler (Built-in)
+Our native crawler uses intelligent pattern detection to work with a wide variety of novel sites. It automatically recognizes common chapter URL patterns and adapts to different site structures.
+
+- **License**: MIT (same as SageMTL)
+- **Best for**: General use, sites with standard chapter numbering
+- **Setup**: No additional installation needed
+
+### LightNovel-Crawler Integration (Optional)
+For maximum site compatibility, SageMTL can integrate with [lightnovel-crawler](https://github.com/dipu-bd/lightnovel-crawler), an excellent open-source project that supports 455+ web novel sites.
+
+- **License**: GPL v3 (separate component)
+- **Best for**: Specific sites with complex structures, maximum compatibility
+- **Setup**: `pip install lightnovel-crawler`
+- **Attribution**: This integration uses lightnovel-crawler as a library dependency. lightnovel-crawler is developed by dipu-bd and contributors. See their repository for full details.
+
+The integration maintains license compliance by using lightnovel-crawler as a separate library dependency rather than incorporating its code into SageMTL. You can use SageMTL with either crawler or both.
+
+### Choosing a Crawler
+
+When you click "Fetch from URL", you can select which crawler to use:
+- Use **SageCrawler** for most sites - it's fast and doesn't require additional dependencies
+- Use **LightNovel-Crawler** when SageCrawler doesn't work with a specific site, or when you need guaranteed support for a particular source
+
+The app will remember your preference, but you can switch at any time.
+
+## Acknowledgments
+
+This project integrates with or was inspired by:
+
+- **[lightnovel-crawler](https://github.com/dipu-bd/lightnovel-crawler)** (GPL v3) - Optional integration for enhanced site support. Developed by dipu-bd and contributors. When installed, provides access to 455+ supported novel sites.
+- **Argos Translate** - Open-source offline neural machine translation
+
 ## License
 
 See [LICENSE](LICENSE) file for details.
