@@ -232,7 +232,13 @@ class NovelCrawler:
         Args:
             novel_info: The novel information with chapters
             output_dir: Base directory for datasets
-            format: Output format ('txt', 'md', or 'jsonl')
+            format: Output format. Supported values:
+                - 'txt': Plain text
+                - 'md': Markdown
+                - 'jsonl': JSON Lines (one chapter per line)
+                - 'json': Pretty-printed JSON per chapter
+                - 'web': Static HTML per chapter
+                - 'epub': EPUB archive (requires ebooklib)
 
         Returns:
             Path to the created dataset directory
@@ -247,29 +253,73 @@ class NovelCrawler:
         files_dir = dataset_dir / "files"
         files_dir.mkdir(exist_ok=True)
 
-        # Save chapters
-        for chapter in novel_info.chapters:
-            filename = f"chapter-{chapter.number:04d}.{format}"
-            file_path = files_dir / filename
+        created_files: list[str] = []
 
-            if format == "txt":
-                content = f"{chapter.title}\n\n{chapter.content}"
-            elif format == "md":
-                content = f"# {chapter.title}\n\n{chapter.content}"
-            elif format == "jsonl":
-                content = json.dumps(
-                    {
-                        "chapter": chapter.number,
-                        "title": chapter.title,
-                        "content": chapter.content,
-                        "url": chapter.url,
-                    },
-                    ensure_ascii=False,
+        def _write_text_file(path: Path, text: str) -> None:
+            path.write_text(text, encoding="utf-8")
+            created_files.append(path.name)
+
+        if format == "epub":
+            try:
+                from sagemtl_desktop.core.epub_writer import EPUBWriter  # type: ignore
+            except ImportError as exc:  # pragma: no cover - optional dependency
+                raise RuntimeError(
+                    "EPUB export requires the desktop components. Install desktop dependencies to enable this format."
+                ) from exc
+
+            writer = EPUBWriter()
+            if not writer.is_available():
+                raise RuntimeError("EPUB export requires ebooklib. Install with: pip install ebooklib")
+
+            epub_path = Path(
+                writer.create_epub(
+                    title=novel_info.title or "Untitled Novel",
+                    chapters=[(ch.title, ch.content) for ch in novel_info.chapters],
+                    output_path=str(files_dir),
+                    author=novel_info.author or "Unknown",
                 )
-            else:
-                content = chapter.content
+            )
+            created_files.append(epub_path.name)
+        else:
+            # Save chapters in requested format
+            for chapter in novel_info.chapters:
+                filename = f"chapter-{chapter.number:04d}.{format}"
+                file_path = files_dir / filename
 
-            file_path.write_text(content, encoding="utf-8")
+                if format == "txt":
+                    content = f"{chapter.title}\n\n{chapter.content}"
+                elif format == "md":
+                    content = f"# {chapter.title}\n\n{chapter.content}"
+                elif format == "jsonl":
+                    content = json.dumps(
+                        {
+                            "chapter": chapter.number,
+                            "title": chapter.title,
+                            "content": chapter.content,
+                            "url": chapter.url,
+                        },
+                        ensure_ascii=False,
+                    )
+                elif format == "json":
+                    content = json.dumps(
+                        {
+                            "chapter": chapter.number,
+                            "title": chapter.title,
+                            "content": chapter.content,
+                            "url": chapter.url,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                elif format == "web":
+                    content = (
+                        "<html><head><meta charset='utf-8'><title>{title}</title></head>"
+                        "<body><h1>{title}</h1><article>{content}</article></body></html>"
+                    ).format(title=chapter.title, content=chapter.content)
+                else:
+                    raise ValueError(f"Unsupported format: {format}")
+
+                _write_text_file(file_path, content)
 
         # Save metadata
         meta = {
@@ -292,6 +342,10 @@ class NovelCrawler:
                 }
                 for ch in novel_info.chapters
             ],
+            "exports": {
+                "format": format,
+                "files": created_files,
+            },
         }
 
         meta_file = dataset_dir / "meta.json"

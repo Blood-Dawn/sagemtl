@@ -228,3 +228,5 @@ def test_no_pattern_detection():
     pattern = crawler.detect_chapter_pattern(url)
 
     assert pattern is None
+
+
