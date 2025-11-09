@@ -1,9 +1,9 @@
-"""Novel crawler with chapter detection and optional lightnovel-crawler integration.
+"""SageCrawler - Novel crawler with automatic chapter detection.
 
 This module provides:
 1. Built-in chapter detection for common novel site patterns
-2. Optional integration with lightnovel-crawler (GPLv3) when available
-3. Automatic URL pattern recognition
+2. Automatic URL pattern recognition
+3. Fast async HTTP requests for chapter fetching
 """
 
 from __future__ import annotations
@@ -84,9 +84,11 @@ class NovelCrawler:
         for regex, template in patterns:
             match = re.match(regex, url, re.IGNORECASE)
             if match:
+                # Expand template using match groups (e.g., \1{num}\3 -> base_url{num}suffix)
+                expanded_pattern = match.expand(template)
                 return {
                     "base_url": match.group(1),
-                    "pattern": template,
+                    "pattern": expanded_pattern,
                     "current_num": int(match.group(2)),
                     "suffix": match.group(3),
                 }
@@ -314,13 +316,19 @@ class NovelCrawler:
         Args:
             novel_info: The novel information with chapters
             output_dir: Base directory for datasets
-            format: Output format ('txt', 'md', or 'jsonl')
+            format: Output format. Supported values:
+                - 'txt': Plain text
+                - 'md': Markdown
+                - 'jsonl': JSON Lines (one chapter per line)
+                - 'json': Pretty-printed JSON per chapter
+                - 'web': Static HTML per chapter
+                - 'epub': EPUB archive (requires ebooklib)
 
         Returns:
             Path to the created dataset directory
         """
         import json
-        from datetime import datetime
+        from datetime import datetime, UTC
 
         # Create dataset directory
         dataset_dir = output_dir / novel_info.title.replace("/", "_").replace("\\", "_")
@@ -329,29 +337,73 @@ class NovelCrawler:
         files_dir = dataset_dir / "files"
         files_dir.mkdir(exist_ok=True)
 
-        # Save chapters
-        for chapter in novel_info.chapters:
-            filename = f"chapter-{chapter.number:04d}.{format}"
-            file_path = files_dir / filename
+        created_files: list[str] = []
 
-            if format == "txt":
-                content = f"{chapter.title}\n\n{chapter.content}"
-            elif format == "md":
-                content = f"# {chapter.title}\n\n{chapter.content}"
-            elif format == "jsonl":
-                content = json.dumps(
-                    {
-                        "chapter": chapter.number,
-                        "title": chapter.title,
-                        "content": chapter.content,
-                        "url": chapter.url,
-                    },
-                    ensure_ascii=False,
+        def _write_text_file(path: Path, text: str) -> None:
+            path.write_text(text, encoding="utf-8")
+            created_files.append(path.name)
+
+        if format == "epub":
+            try:
+                from sagemtl_desktop.core.epub_writer import EPUBWriter  # type: ignore
+            except ImportError as exc:  # pragma: no cover - optional dependency
+                raise RuntimeError(
+                    "EPUB export requires the desktop components. Install desktop dependencies to enable this format."
+                ) from exc
+
+            writer = EPUBWriter()
+            if not writer.is_available():
+                raise RuntimeError("EPUB export requires ebooklib. Install with: pip install ebooklib")
+
+            epub_path = Path(
+                writer.create_epub(
+                    title=novel_info.title or "Untitled Novel",
+                    chapters=[(ch.title, ch.content) for ch in novel_info.chapters],
+                    output_path=str(files_dir),
+                    author=novel_info.author or "Unknown",
                 )
-            else:
-                content = chapter.content
+            )
+            created_files.append(epub_path.name)
+        else:
+            # Save chapters in requested format
+            for chapter in novel_info.chapters:
+                filename = f"chapter-{chapter.number:04d}.{format}"
+                file_path = files_dir / filename
 
-            file_path.write_text(content, encoding="utf-8")
+                if format == "txt":
+                    content = f"{chapter.title}\n\n{chapter.content}"
+                elif format == "md":
+                    content = f"# {chapter.title}\n\n{chapter.content}"
+                elif format == "jsonl":
+                    content = json.dumps(
+                        {
+                            "chapter": chapter.number,
+                            "title": chapter.title,
+                            "content": chapter.content,
+                            "url": chapter.url,
+                        },
+                        ensure_ascii=False,
+                    )
+                elif format == "json":
+                    content = json.dumps(
+                        {
+                            "chapter": chapter.number,
+                            "title": chapter.title,
+                            "content": chapter.content,
+                            "url": chapter.url,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                elif format == "web":
+                    content = (
+                        "<html><head><meta charset='utf-8'><title>{title}</title></head>"
+                        "<body><h1>{title}</h1><article>{content}</article></body></html>"
+                    ).format(title=chapter.title, content=chapter.content)
+                else:
+                    raise ValueError(f"Unsupported format: {format}")
+
+                _write_text_file(file_path, content)
 
         # Save metadata
         meta = {
@@ -362,8 +414,8 @@ class NovelCrawler:
             "cover_url": novel_info.cover_url,
             "source_url": novel_info.source_url,
             "chapter_count": len(novel_info.chapters),
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             "total_words": sum(ch.word_count for ch in novel_info.chapters),
             "chapters": [
                 {
@@ -374,33 +426,13 @@ class NovelCrawler:
                 }
                 for ch in novel_info.chapters
             ],
+            "exports": {
+                "format": format,
+                "files": created_files,
+            },
         }
 
         meta_file = dataset_dir / "meta.json"
         meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
         return dataset_dir
-
-
-def try_lightnovel_crawler_integration(url: str, output_dir: Path) -> Optional[Path]:
-    """
-    Attempt to use lightnovel-crawler if it's installed.
-
-    This is an optional integration for users who have lightnovel-crawler
-    installed separately. The lightnovel-crawler package is GPLv3 licensed.
-
-    Returns the dataset path if successful, None otherwise.
-
-    Note: This function is deprecated. Use lncrawl_adapter.fetch_novel() instead.
-    """
-    try:
-        # Try to import lightnovel-crawler (optional dependency)
-        from lncrawl.core.app import App  # noqa: F401
-
-        # This integration is now handled by lncrawl_adapter.py
-        print("lightnovel-crawler available - use lncrawl_adapter.fetch_novel()")
-        return None
-
-    except ImportError:
-        print("lightnovel-crawler not installed (optional GPLv3 component)")
-        return None

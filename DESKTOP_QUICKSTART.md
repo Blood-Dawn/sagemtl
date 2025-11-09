@@ -86,7 +86,7 @@ python -m sagemtl_desktop.main
    - Click OK
 
 3. **Wait for download**
-   - LNCrawl downloads EPUB
+   - SageCrawler downloads and imports chapters automatically
    - App extracts chapters
    - Novel appears as ⏳ pending
 
@@ -159,11 +159,6 @@ pip install --force-reinstall -r requirements-desktop.txt
 python -c "import argostranslate.package; print([f'{p.from_name} → {p.to_name}' for p in argostranslate.package.get_installed_packages()])"
 
 # If empty, install models (see Step 2)
-```
-
-### LNCrawl not found
-```bash
-pip install lightnovel-crawler
 ```
 
 ## Next Steps

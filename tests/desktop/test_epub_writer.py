@@ -47,7 +47,7 @@ class TestEPUBWriter:
         # Verify file size (should be > 0)
         assert Path(epub_path).stat().st_size > 0
 
-    def test_epub_handles_empty_chapter(self, tmp_path, caplog):
+    def test_epub_handles_empty_chapter(self, tmp_path, capsys):
         """Test that empty chapters are logged and skipped"""
         writer = EPUBWriter()
 
@@ -72,8 +72,9 @@ class TestEPUBWriter:
         # Should still succeed
         assert Path(epub_path).exists()
 
-        # Should log warning about empty chapter
-        assert any("Skipping empty chapter" in record.message for record in caplog.records)
+        # Should print warning about empty chapter
+        captured = capsys.readouterr()
+        assert "Skipping empty chapter" in captured.out
 
     def test_epub_sanitizes_html(self, tmp_path):
         """Test that HTML content is sanitized"""
