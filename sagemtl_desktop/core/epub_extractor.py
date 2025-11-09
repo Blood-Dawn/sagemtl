@@ -128,10 +128,13 @@ class EPUBExtractor:
             # Step 5: Extract chapters in order
             opf_dir = Path(opf_path).parent
             chapters = []
+            extracted_count = 0
+            failed_count = 0
 
             for item_id in spine_items:
                 if item_id not in manifest:
                     print(f"Warning: Spine item '{item_id}' not in manifest, skipping")
+                    failed_count += 1
                     continue
 
                 href, media_type = manifest[item_id]
@@ -148,13 +151,26 @@ class EPUBExtractor:
 
                     if chapter_text.strip():  # Only add non-empty chapters
                         chapters.append(chapter_text)
+                        extracted_count += 1
                 except KeyError:
                     print(f"Warning: File not found: {chapter_path}")
+                    failed_count += 1
                 except Exception as e:
                     print(f"Warning: Failed to extract {chapter_path}: {e}")
+                    failed_count += 1
 
+            # Be more lenient - if we extracted at least some chapters, continue
             if not chapters:
-                raise ValueError("No chapters extracted from EPUB")
+                if failed_count > 0:
+                    raise ValueError(
+                        f"No chapters extracted from EPUB. Failed to read {failed_count} file(s). "
+                        f"The EPUB may be corrupted or use an unsupported structure."
+                    )
+                else:
+                    raise ValueError("No chapters extracted from EPUB")
+            
+            if extracted_count > 0:
+                print(f"Successfully extracted {extracted_count} chapters from EPUB (failed: {failed_count})")
 
             # Step 6: Concatenate with chapter markers
             full_text = ""
