@@ -84,9 +84,11 @@ class NovelCrawler:
         for regex, template in patterns:
             match = re.match(regex, url, re.IGNORECASE)
             if match:
+                # Expand template using match groups (e.g., \1{num}\3 -> base_url{num}suffix)
+                expanded_pattern = match.expand(template)
                 return {
                     "base_url": match.group(1),
-                    "pattern": template,
+                    "pattern": expanded_pattern,
                     "current_num": int(match.group(2)),
                     "suffix": match.group(3),
                 }
@@ -236,7 +238,7 @@ class NovelCrawler:
             Path to the created dataset directory
         """
         import json
-        from datetime import datetime
+        from datetime import datetime, UTC
 
         # Create dataset directory
         dataset_dir = output_dir / novel_info.title.replace("/", "_").replace("\\", "_")
@@ -278,8 +280,8 @@ class NovelCrawler:
             "cover_url": novel_info.cover_url,
             "source_url": novel_info.source_url,
             "chapter_count": len(novel_info.chapters),
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             "total_words": sum(ch.word_count for ch in novel_info.chapters),
             "chapters": [
                 {
