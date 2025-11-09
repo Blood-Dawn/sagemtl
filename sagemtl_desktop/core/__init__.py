@@ -12,6 +12,8 @@ from .crawler import Crawler
 from .epub_extractor import EPUBExtractor
 from .epub_writer import EPUBWriter
 from .exporter import Exporter
+from .import_manager import ImportManager
+from .structured_logger import StructuredLogger, get_logger
 
 __all__ = [
     "Job",
@@ -27,4 +29,7 @@ __all__ = [
     "EPUBExtractor",
     "EPUBWriter",
     "Exporter",
+    "ImportManager",
+    "StructuredLogger",
+    "get_logger",
 ]

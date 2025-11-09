@@ -14,11 +14,13 @@ from .preview_panel import PreviewPanel
 from .controls_panel import ControlsPanel
 from .log_panel import LogPanel
 from .dialogs import ErrorDialog, CrawlOptionsDialog, AboutDialog
+from .export_dialog import ExportDialog
 
 from ..core import (
     JobManager, Translator, GlossaryProcessor,
     Crawler, EPUBExtractor, Exporter,
-    Job, JobType, JobStatus, ProcessingOptions
+    Job, JobType, JobStatus, ProcessingOptions,
+    ImportManager, get_logger
 )
 
 
@@ -40,6 +42,8 @@ class MainWindow(QMainWindow):
         self.crawler = Crawler()
         self.epub_extractor = EPUBExtractor()
         self.exporter = Exporter()
+        self.import_manager = ImportManager()
+        self.logger = get_logger()
 
         # Processing options
         self.processing_options = ProcessingOptions()
@@ -92,6 +96,9 @@ class MainWindow(QMainWindow):
 
         # Set splitter sizes (300px for file list, rest for preview)
         main_splitter.setSizes([300, 900])
+
+        # Store splitter for persistence
+        self.main_splitter = main_splitter
 
         layout.addWidget(main_splitter)
 
@@ -175,6 +182,15 @@ class MainWindow(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
 
+        # Restore splitter sizes
+        splitter_sizes = self.settings.value("splitter_sizes")
+        if splitter_sizes:
+            try:
+                sizes = [int(s) for s in splitter_sizes]
+                self.main_splitter.setSizes(sizes)
+            except:
+                pass
+
         # Restore language settings
         source_lang = self.settings.value("source_lang", "auto")
         target_lang = self.settings.value("target_lang", "en")
@@ -194,6 +210,7 @@ class MainWindow(QMainWindow):
     def _save_settings(self):
         """Save settings"""
         self.settings.setValue("geometry", self.saveGeometry())
+        self.settings.setValue("splitter_sizes", self.main_splitter.sizes())
         self.settings.setValue("source_lang", self.processing_options.source_lang)
         self.settings.setValue("target_lang", self.processing_options.target_lang)
         if self.processing_options.glossary_path:
@@ -223,9 +240,19 @@ class MainWindow(QMainWindow):
             "Supported Files (*.txt *.epub);;Text Files (*.txt);;EPUB Files (*.epub);;All Files (*)"
         )
 
+        if not file_paths:
+            return
+
+        self.logger.info(
+            f"Starting import of {len(file_paths)} file(s)",
+            stage="import",
+            file_count=len(file_paths)
+        )
+
         for file_path in file_paths:
             # Read file content
             try:
+                # Check for duplicate
                 if file_path.endswith('.epub'):
                     # Extract EPUB
                     full_text, chapters = self.epub_extractor.extract(file_path)
@@ -234,6 +261,23 @@ class MainWindow(QMainWindow):
                     # Read text file
                     with open(file_path, 'r', encoding='utf-8') as f:
                         original_text = f.read()
+
+                # Check for duplicate using ImportManager
+                duplicate_job_id = self.import_manager.is_duplicate(original_text)
+                if duplicate_job_id:
+                    self.logger.warning(
+                        f"Duplicate content detected: {file_path}",
+                        stage="import",
+                        file_path=file_path,
+                        duplicate_of=duplicate_job_id
+                    )
+                    QMessageBox.information(
+                        self,
+                        "Duplicate Content",
+                        f"File '{os.path.basename(file_path)}' has already been imported.\n"
+                        f"Skipping duplicate."
+                    )
+                    continue
 
                 # Create job
                 import os
@@ -248,7 +292,24 @@ class MainWindow(QMainWindow):
                 job.original_text = original_text
                 self.job_manager.update_job(job)
 
+                # Track content hash
+                self.import_manager.track_content(original_text, job_id)
+
+                self.logger.info(
+                    f"Successfully imported: {os.path.basename(file_path)}",
+                    stage="import",
+                    job_id=job_id,
+                    file_path=file_path,
+                    content_length=len(original_text)
+                )
+
             except Exception as e:
+                self.logger.error(
+                    f"Import failed: {file_path}",
+                    stage="import",
+                    file_path=file_path,
+                    exc_info=e
+                )
                 QMessageBox.critical(
                     self,
                     "Import Error",
@@ -261,6 +322,15 @@ class MainWindow(QMainWindow):
         dialog = CrawlOptionsDialog(url, self)
         if dialog.exec():
             options = dialog.get_options()
+
+            self.logger.info(
+                f"Starting crawl from URL: {options['url']}",
+                stage="crawl",
+                url=options['url'],
+                novel_name=options.get('novel_name'),
+                start_chapter=options.get('start_chapter'),
+                end_chapter=options.get('end_chapter')
+            )
 
             # Create crawl job
             job_id = self.job_manager.create_job(
@@ -291,18 +361,63 @@ class MainWindow(QMainWindow):
 
                 log_cb("info", f"Extracted {len(chapters)} chapters")
 
+                # Log successful crawl
+                self.logger.info(
+                    f"Crawl completed: {options.get('novel_name', 'Unknown')}",
+                    stage="crawl",
+                    job_id=job_id,
+                    chapter_count=len(chapters),
+                    content_length=len(full_text)
+                )
+
             self.job_manager.start_job(job_id, crawl_processor)
 
     def _on_load_glossary(self, path: str):
         """Handle load glossary"""
         try:
-            self.glossary.load_glossary(path)
+            result = self.glossary.load_glossary(path)
             self.processing_options.glossary_path = path
+
+            entry_count = result['entries_loaded']
+
             self.log_panel.add_log(
                 "system", "system", "info",
                 f"Loaded glossary: {path}"
             )
+
+            self.logger.info(
+                f"Glossary loaded: {path}",
+                stage="glossary",
+                glossary_path=path,
+                entry_count=entry_count,
+                warnings=len(result['warnings'])
+            )
+
+            # Show warnings if any
+            if result['warnings']:
+                warning_msg = "Glossary loaded with warnings:\n\n"
+                warning_msg += "\n".join(f"• {w}" for w in result['warnings'])
+                warning_msg += f"\n\nLoaded {entry_count} entries successfully."
+
+                QMessageBox.warning(
+                    self,
+                    "Glossary Warnings",
+                    warning_msg
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Glossary Loaded",
+                    f"Successfully loaded {entry_count} glossary entries."
+                )
+
         except Exception as e:
+            self.logger.error(
+                f"Failed to load glossary: {path}",
+                stage="glossary",
+                glossary_path=path,
+                exc_info=e
+            )
             QMessageBox.critical(
                 self,
                 "Glossary Error",
@@ -322,6 +437,15 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self.logger.info(
+            f"Starting batch processing of {len(jobs)} job(s)",
+            stage="processing",
+            job_count=len(jobs),
+            source_lang=self.processing_options.source_lang,
+            target_lang=self.processing_options.target_lang,
+            glossary_loaded=self.glossary.is_loaded()
+        )
+
         # Disable processing button
         self.controls_panel.set_processing_enabled(False)
 
@@ -331,6 +455,15 @@ class MainWindow(QMainWindow):
 
     def _process_job(self, job_id: str):
         """Process a single job"""
+        job = self.job_manager.get_job(job_id)
+
+        self.logger.info(
+            f"Starting translation job: {job.name}",
+            stage="processing",
+            job_id=job_id,
+            content_length=len(job.original_text)
+        )
+
         def translate_processor(job, progress_cb, log_cb):
             # Step 1: Apply glossary before
             if self.glossary.is_loaded():
@@ -365,6 +498,14 @@ class MainWindow(QMainWindow):
             job.metadata['source_lang'] = self.processing_options.source_lang
             job.metadata['target_lang'] = self.processing_options.target_lang
 
+            # Log completion
+            self.logger.info(
+                f"Translation job completed: {job.name}",
+                stage="processing",
+                job_id=job_id,
+                result_length=len(cleaned)
+            )
+
         self.job_manager.start_job(job_id, translate_processor)
 
     def _on_export(self):
@@ -383,6 +524,15 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Show export dialog
+        export_dialog = ExportDialog(self)
+        if not export_dialog.exec():
+            return  # User cancelled
+
+        # Get selected format and options
+        export_format = export_dialog.get_format()
+        author = export_dialog.get_author()
+
         # Select output directory
         output_dir = QFileDialog.getExistingDirectory(
             self,
@@ -391,17 +541,40 @@ class MainWindow(QMainWindow):
 
         if output_dir:
             try:
-                exported = self.exporter.export_batch(completed_jobs, output_dir)
+                # Export with selected format
+                if export_format == "epub":
+                    exported = self.exporter.export_batch_with_format(
+                        completed_jobs, output_dir, format="epub", author=author
+                    )
+                    format_name = "EPUB"
+                else:
+                    exported = self.exporter.export_batch(completed_jobs, output_dir)
+                    format_name = "TXT"
+
                 QMessageBox.information(
                     self,
                     "Export Complete",
-                    f"Exported {len(exported)} files to:\n{output_dir}"
+                    f"Exported {len(exported)} {format_name} files to:\n{output_dir}"
                 )
+
+                # Log the export
+                self.logger.info(
+                    f"Exported {len(exported)} files as {format_name}",
+                    stage="export",
+                    file_count=len(exported),
+                    format=export_format
+                )
+
             except Exception as e:
                 QMessageBox.critical(
                     self,
                     "Export Error",
                     f"Failed to export files:\n{str(e)}"
+                )
+                self.logger.error(
+                    f"Export failed: {str(e)}",
+                    stage="export",
+                    exc_info=e
                 )
 
     def _on_source_lang_changed(self, lang_code: str):
@@ -429,6 +602,13 @@ class MainWindow(QMainWindow):
                 self
             )
             dialog.exec()
+
+            # Log the error view
+            self.logger.info(
+                f"User viewed error details for job: {job.name}",
+                job_id=job_id,
+                stage="ui"
+            )
 
     def _on_job_added(self, job_id: str):
         """Handle job added"""
@@ -470,8 +650,25 @@ class MainWindow(QMainWindow):
         )
 
         if reply == QMessageBox.Yes:
-            for job in self.job_manager.get_all_jobs():
+            jobs = self.job_manager.get_all_jobs()
+            job_count = len(jobs)
+
+            self.logger.info(
+                f"Clearing {job_count} job(s)",
+                stage="ui",
+                job_count=job_count
+            )
+
+            for job in jobs:
                 self.job_manager.remove_job(job.job_id)
+
+            # Clear ImportManager tracking as well
+            self.import_manager = ImportManager()
+
+            self.logger.info(
+                "All jobs cleared",
+                stage="ui"
+            )
 
     def _on_about(self):
         """Handle about dialog"""
