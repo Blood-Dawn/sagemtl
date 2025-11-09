@@ -6,7 +6,10 @@ PySide6>=6.5.0
 # Translation Engine (offline)
 argostranslate>=1.8.0
 
-# Novel Crawler (optional but recommended)
+# HTTP client for SageCrawler
+httpx>=0.27.0
+
+# Novel Crawler (optional, for fallback)
 lightnovel-crawler>=3.0.0
 
 # EPUB creation
@@ -19,10 +22,11 @@ python-json-logger>=2.0.7
 # - zipfile (EPUB extraction)
 # - xml.etree.ElementTree (EPUB parsing)
 # - csv (glossary)
-# - subprocess (LNCrawl integration)
+# - asyncio (SageCrawler)
 # - threading (background jobs)
 # - hashlib (content deduplication)
 # - logging (structured logging)
+# - html.parser (HTML extraction)
 
 # Packaging
 pyinstaller>=5.13.0
