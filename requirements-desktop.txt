@@ -9,6 +9,10 @@ argostranslate>=1.8.0
 # HTTP client for SageCrawler
 httpx>=0.27.0
 
+# Optional: Advanced web novel crawler (GPL v3 licensed)
+# Provides support for 455+ novel sites
+lightnovel-crawler>=3.10.0
+
 # EPUB creation
 ebooklib>=0.18
 

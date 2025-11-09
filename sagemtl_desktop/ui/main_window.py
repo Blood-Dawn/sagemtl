@@ -4,7 +4,8 @@ Main application window.
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QFileDialog, QMessageBox, QMenuBar, QMenu
+    QSplitter, QFileDialog, QMessageBox, QMenuBar, QMenu,
+    QComboBox, QLabel, QGroupBox, QPushButton, QDialog, QTextEdit
 )
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QAction
@@ -23,6 +24,13 @@ from ..core import (
     ImportManager, get_logger
 )
 
+# New crawler wrappers
+from ..core.sage_crawler_wrapper import SageCrawlerWrapper
+from ..core.lightnovel_crawler_wrapper import (
+    LightNovelCrawlerWrapper,
+    LIGHTNOVEL_CRAWLER_AVAILABLE
+)
+
 
 class MainWindow(QMainWindow):
     """Main application window"""
@@ -39,11 +47,22 @@ class MainWindow(QMainWindow):
         self.job_manager = JobManager(self)
         self.translator = Translator()
         self.glossary = GlossaryProcessor()
-        self.crawler = Crawler()
+        self.crawler = Crawler()  # Keep for compatibility
         self.epub_extractor = EPUBExtractor()
         self.exporter = Exporter()
         self.import_manager = ImportManager()
         self.logger = get_logger()
+
+        # New crawler wrappers
+        self.sage_crawler = SageCrawlerWrapper()
+        self.lightnovel_crawler = None
+
+        # Try to initialize lightnovel-crawler if available
+        if LIGHTNOVEL_CRAWLER_AVAILABLE:
+            try:
+                self.lightnovel_crawler = LightNovelCrawlerWrapper()
+            except ImportError:
+                pass  # User hasn't installed it, that's okay
 
         # Processing options
         self.processing_options = ProcessingOptions()
@@ -316,6 +335,22 @@ class MainWindow(QMainWindow):
                     f"Failed to import {file_path}:\n{str(e)}"
                 )
 
+    def get_selected_crawler(self):
+        """
+        Get the currently selected crawler instance.
+
+        Returns:
+            CrawlerInterface: Either SageCrawler or LightNovelCrawler
+        """
+        # For now, prefer lightnovel-crawler if available, else use SageCrawler
+        # Later we can add UI selection
+        crawler_pref = self.settings.value("preferred_crawler", "lightnovel")
+
+        if crawler_pref == "lightnovel" and self.lightnovel_crawler:
+            return self.lightnovel_crawler
+        else:
+            return self.sage_crawler
+
     def _on_fetch_url(self, url: str):
         """Handle fetch URL"""
         # Show crawl options dialog
@@ -339,36 +374,58 @@ class MainWindow(QMainWindow):
                 **options
             )
 
-            # Start crawl worker
+            # Get selected crawler
+            selected_crawler = self.get_selected_crawler()
+
+            # Start crawl worker with async support
             def crawl_processor(job, progress_cb, log_cb):
-                # Crawl with SageCrawler
-                epub_path = self.crawler.crawl_novel(
-                    url=options['url'],
-                    novel_name=options.get('novel_name'),
-                    start_chapter=options.get('start_chapter'),
-                    end_chapter=options.get('end_chapter'),
-                    progress_callback=progress_cb,
-                    log_callback=log_cb
-                )
+                import asyncio
 
-                # Extract EPUB
-                log_cb("info", "Extracting EPUB content...")
-                full_text, chapters = self.epub_extractor.extract(epub_path)
+                # Define progress callback wrapper
+                def progress_wrapper(current, total, message):
+                    if total > 0:
+                        progress = (current / total) * 100
+                        progress_cb(progress)
+                    log_cb("info", message)
 
-                # Store in job
-                job.original_text = full_text
-                job.metadata['chapter_count'] = len(chapters)
+                # Run async crawler in event loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    # Crawl with selected crawler
+                    novel_data = loop.run_until_complete(
+                        selected_crawler.fetch_novel(url, progress_wrapper)
+                    )
 
-                log_cb("info", f"Extracted {len(chapters)} chapters")
+                    # Convert chapters to text format
+                    log_cb("info", f"Processing {len(novel_data.chapters)} chapters...")
 
-                # Log successful crawl
-                self.logger.info(
-                    f"Crawl completed: {options.get('novel_name', 'Unknown')}",
-                    stage="crawl",
-                    job_id=job_id,
-                    chapter_count=len(chapters),
-                    content_length=len(full_text)
-                )
+                    full_text_parts = []
+                    for chapter in novel_data.chapters:
+                        full_text_parts.append(f"=== {chapter.title} ===\n\n")
+                        full_text_parts.append(chapter.content)
+                        full_text_parts.append("\n\n")
+
+                    full_text = "".join(full_text_parts)
+
+                    # Store in job
+                    job.original_text = full_text
+                    job.metadata['chapter_count'] = len(novel_data.chapters)
+                    job.metadata['novel_title'] = novel_data.title
+                    job.metadata['author'] = novel_data.author
+
+                    log_cb("info", f"Crawl completed: {len(novel_data.chapters)} chapters")
+
+                    # Log successful crawl
+                    self.logger.info(
+                        f"Crawl completed: {novel_data.title}",
+                        stage="crawl",
+                        job_id=job_id,
+                        chapter_count=len(novel_data.chapters),
+                        content_length=len(full_text)
+                    )
+                finally:
+                    loop.close()
 
             self.job_manager.start_job(job_id, crawl_processor)
 
