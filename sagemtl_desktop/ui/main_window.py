@@ -293,7 +293,7 @@ class MainWindow(QMainWindow):
                 self.job_manager.update_job(job)
 
                 # Track content hash
-                self.import_manager.track_content(original_text, job_id)
+                self.import_manager.register_import(job_id, original_text)
 
                 self.logger.info(
                     f"Successfully imported: {os.path.basename(file_path)}",

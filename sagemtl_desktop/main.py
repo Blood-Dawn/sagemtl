@@ -3,17 +3,20 @@ Main entry point for SageMTL Desktop Application.
 """
 
 import sys
+import warnings
+
+# Suppress deprecated pkg_resources warning from ctranslate2
+warnings.filterwarnings('ignore', message='.*pkg_resources is deprecated.*')
+
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
 
 from .ui.main_window import MainWindow
 
 
 def main():
     """Main entry point"""
-    # Enable high DPI scaling
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    # Note: AA_EnableHighDpiScaling and AA_UseHighDpiPixmaps are deprecated in Qt6
+    # High DPI scaling is enabled by default in Qt6, no need to set attributes
 
     # Create application
     app = QApplication(sys.argv)

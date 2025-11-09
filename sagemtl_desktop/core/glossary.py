@@ -46,32 +46,50 @@ class GlossaryProcessor:
         with open(path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
 
-            if not reader.fieldnames or 'source' not in reader.fieldnames or 'target' not in reader.fieldnames:
-                raise ValueError("CSV must have 'source' and 'target' columns")
-
-            # Check for recommended columns
-            recommended_columns = ['source', 'target', 'case_sensitive', 'word_boundary', 'notes']
-            missing_columns = [col for col in recommended_columns if col not in reader.fieldnames]
-
-            if missing_columns:
-                warnings.append(
-                    f"Optional column(s) missing: {', '.join(missing_columns)}. "
-                    f"Defaults will be used."
+            # Support multiple CSV formats:
+            # 1. Standard format: 'source' and 'target' columns
+            # 2. Alternative format: 'English' and 'Chinese' columns
+            # 3. Category-based format: 'Category', 'English', 'Chinese' columns
+            
+            if not reader.fieldnames:
+                raise ValueError("CSV file is empty or has no headers")
+            
+            # Determine which columns to use
+            source_col = None
+            target_col = None
+            
+            # Check for standard format
+            if 'source' in reader.fieldnames and 'target' in reader.fieldnames:
+                source_col = 'source'
+                target_col = 'target'
+            # Check for English/Chinese format
+            elif 'English' in reader.fieldnames and 'Chinese' in reader.fieldnames:
+                source_col = 'Chinese'  # For translation, Chinese is source
+                target_col = 'English'   # English is target
+            else:
+                # Show available columns to help user
+                available = ', '.join(reader.fieldnames)
+                raise ValueError(
+                    f"CSV must have either 'source'/'target' or 'English'/'Chinese' columns. "
+                    f"Available columns: {available}"
                 )
 
-            # Check for unexpected columns
-            unexpected_columns = [col for col in reader.fieldnames if col not in recommended_columns]
-            if unexpected_columns:
-                warnings.append(
-                    f"Unexpected column(s) found: {', '.join(unexpected_columns)}. "
-                    f"These will be ignored."
-                )
+            # Check for recommended columns (only check if using standard format)
+            if source_col == 'source':
+                recommended_columns = ['source', 'target', 'case_sensitive', 'word_boundary', 'notes']
+                missing_columns = [col for col in recommended_columns if col not in reader.fieldnames]
+
+                if missing_columns:
+                    warnings.append(
+                        f"Optional column(s) missing: {', '.join(missing_columns)}. "
+                        f"Defaults will be used."
+                    )
 
             for row_num, row in enumerate(reader, start=2):  # Start at 2 (after header)
                 try:
                     entry = GlossaryEntry(
-                        source=row['source'].strip(),
-                        target=row['target'].strip(),
+                        source=row[source_col].strip(),
+                        target=row[target_col].strip(),
                         case_sensitive=row.get('case_sensitive', 'true').lower() == 'true',
                         word_boundary=row.get('word_boundary', 'false').lower() == 'true',
                         notes=row.get('notes', '').strip()
