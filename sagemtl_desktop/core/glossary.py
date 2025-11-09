@@ -31,6 +31,9 @@ class GlossaryProcessor:
         Raises:
             FileNotFoundError: If glossary file doesn't exist
             ValueError: If CSV is malformed
+
+        Returns:
+            dict: Validation results with warnings if any
         """
         self.glossary_path = Path(path)
 
@@ -38,12 +41,31 @@ class GlossaryProcessor:
             raise FileNotFoundError(f"Glossary file not found: {path}")
 
         self.entries = []
+        warnings = []
 
         with open(path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
 
             if not reader.fieldnames or 'source' not in reader.fieldnames or 'target' not in reader.fieldnames:
                 raise ValueError("CSV must have 'source' and 'target' columns")
+
+            # Check for recommended columns
+            recommended_columns = ['source', 'target', 'case_sensitive', 'word_boundary', 'notes']
+            missing_columns = [col for col in recommended_columns if col not in reader.fieldnames]
+
+            if missing_columns:
+                warnings.append(
+                    f"Optional column(s) missing: {', '.join(missing_columns)}. "
+                    f"Defaults will be used."
+                )
+
+            # Check for unexpected columns
+            unexpected_columns = [col for col in reader.fieldnames if col not in recommended_columns]
+            if unexpected_columns:
+                warnings.append(
+                    f"Unexpected column(s) found: {', '.join(unexpected_columns)}. "
+                    f"These will be ignored."
+                )
 
             for row_num, row in enumerate(reader, start=2):  # Start at 2 (after header)
                 try:
@@ -56,7 +78,7 @@ class GlossaryProcessor:
                     )
 
                     if not entry.source or not entry.target:
-                        print(f"Warning: Empty source or target at row {row_num}, skipping")
+                        warnings.append(f"Row {row_num}: Empty source or target, skipping")
                         continue
 
                     self.entries.append(entry)
@@ -69,6 +91,11 @@ class GlossaryProcessor:
         self.entries.sort(key=lambda e: len(e.source), reverse=True)
 
         print(f"Loaded {len(self.entries)} glossary entries from {path}")
+
+        return {
+            'entries_loaded': len(self.entries),
+            'warnings': warnings
+        }
 
     def apply_before(self, text: str) -> str:
         """
@@ -139,6 +166,16 @@ class GlossaryProcessor:
     def is_loaded(self) -> bool:
         """Check if a glossary is loaded"""
         return len(self.entries) > 0
+
+    @property
+    def before_entries(self) -> List[GlossaryEntry]:
+        """Get entries applied before translation (all entries for now)"""
+        return self.entries
+
+    @property
+    def after_entries(self) -> List[GlossaryEntry]:
+        """Get entries applied after translation (all entries for now)"""
+        return self.entries
 
     def clear(self):
         """Clear loaded glossary"""

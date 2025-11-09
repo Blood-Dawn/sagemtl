@@ -139,18 +139,29 @@ This document tracks the stabilization improvements from the PR checklist.
 **Implementation:**
 - `_on_job_double_clicked()` method (lines 470-487)
 
-## 🚧 Remaining Items
+### 8. Config & Languages ✓
+**Status:** COMPLETE
 
-### 8. Config & Languages
-**Status:** PENDING
+- ✅ Language preset pack with quick-select button
+- ✅ Common MTL presets (Auto→EN, ZH→EN, JA→EN, KO→EN)
+- ✅ Bidirectional presets (EN→ZH, EN→JA, EN→KO)
+- ✅ Glossary CSV validation with detailed warnings
+- ✅ Warnings for missing optional columns
+- ✅ Warnings for unexpected columns
+- ✅ Warnings for empty rows
+- ✅ User-friendly dialog showing all validation warnings
 
-**Requirements:**
-- Language preset pack in settings
-- Glossary validation (warn if columns don't match)
+**Files Modified:**
+- `sagemtl_desktop/core/glossary.py` (validation)
+- `sagemtl_desktop/ui/controls_panel.py` (preset button & menu)
+- `sagemtl_desktop/ui/main_window.py` (warning display)
 
-**Estimated Effort:** Small
+**Implementation:**
+- Preset button in controls panel with dropdown menu
+- `load_glossary()` returns validation results dict
+- Main window displays warnings in QMessageBox
 
-**Note:** This is a nice-to-have feature that can be added post-release
+## 🚧 Remaining Items (Verification Only)
 
 ### 9. Tests ✓
 **Status:** FOUNDATION COMPLETE
@@ -235,8 +246,8 @@ This document tracks the stabilization improvements from the PR checklist.
 
 ## Summary
 
-**Completed:** 9/10 major items
-**Progress:** ~90% of PR checklist
+**Completed:** 10/10 major items ✅
+**Progress:** 100% of PR checklist
 **Blockers:** None
 **Risk:** Low - all changes are backward compatible
 
@@ -249,8 +260,9 @@ This document tracks the stabilization improvements from the PR checklist.
 5. **Structured Logging** - JSON logs with rotation, integrated throughout app
 6. **Layout Persistence** - Splitter positions saved and restored
 7. **Error Navigation** - Clickable failed jobs with detailed error dialogs
-8. **Test Foundation** - 17 comprehensive unit tests
-9. **Packaging** - PyInstaller spec updated for all dependencies
+8. **Config & Languages** - Language presets and glossary validation
+9. **Test Foundation** - 17 comprehensive unit tests
+10. **Packaging** - PyInstaller spec updated for all dependencies
 
 ### What's New in This Release
 
@@ -258,16 +270,17 @@ This document tracks the stabilization improvements from the PR checklist.
 - **Import Deduplication** - Prevents duplicate content imports with SHA-256 hashing
 - **Comprehensive Logging** - All operations logged to JSON files with structured metadata
 - **Better Error Handling** - Clear, actionable error messages with install instructions
+- **Language Presets** - Quick-select buttons for common language pairs (Auto→EN, ZH→EN, JA→EN, KO→EN)
+- **Glossary Validation** - Detailed warnings for CSV format issues
 - **UI Polish** - Persistent splitter positions, clickable error navigation
 
 ### Remaining Work
 
-Only **1 item remains pending:**
-- **Config & Languages** - Language presets and glossary validation (nice-to-have)
+All **10 stabilization items are complete!** 🎉
 
-Plus verification:
+Only verification remains:
 - Windows VM smoke test (packaging validation)
 
-The stabilization work is essentially complete. All critical features are implemented,
+The stabilization work is **100% complete**. All features are implemented,
 tested, and integrated. The application is production-ready pending final packaging
 verification on Windows.

@@ -375,10 +375,10 @@ class MainWindow(QMainWindow):
     def _on_load_glossary(self, path: str):
         """Handle load glossary"""
         try:
-            self.glossary.load_glossary(path)
+            result = self.glossary.load_glossary(path)
             self.processing_options.glossary_path = path
 
-            entry_count = len(self.glossary.before_entries) + len(self.glossary.after_entries)
+            entry_count = result['entries_loaded']
 
             self.log_panel.add_log(
                 "system", "system", "info",
@@ -389,8 +389,28 @@ class MainWindow(QMainWindow):
                 f"Glossary loaded: {path}",
                 stage="glossary",
                 glossary_path=path,
-                entry_count=entry_count
+                entry_count=entry_count,
+                warnings=len(result['warnings'])
             )
+
+            # Show warnings if any
+            if result['warnings']:
+                warning_msg = "Glossary loaded with warnings:\n\n"
+                warning_msg += "\n".join(f"• {w}" for w in result['warnings'])
+                warning_msg += f"\n\nLoaded {entry_count} entries successfully."
+
+                QMessageBox.warning(
+                    self,
+                    "Glossary Warnings",
+                    warning_msg
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Glossary Loaded",
+                    f"Successfully loaded {entry_count} glossary entries."
+                )
+
         except Exception as e:
             self.logger.error(
                 f"Failed to load glossary: {path}",

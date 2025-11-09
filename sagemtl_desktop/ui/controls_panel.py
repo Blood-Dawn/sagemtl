@@ -5,9 +5,10 @@ Controls and settings panel.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QPushButton, QComboBox, QLabel, QLineEdit,
-    QFileDialog, QToolBar
+    QFileDialog, QToolBar, QMenu
 )
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QAction
 
 
 class ControlsPanel(QWidget):
@@ -87,6 +88,14 @@ class ControlsPanel(QWidget):
         """Create language settings group"""
         group = QGroupBox("Translation Settings")
         layout = QHBoxLayout(group)
+
+        # Language preset button
+        preset_btn = QPushButton("⚡ Presets")
+        preset_btn.setToolTip("Quick language pair presets")
+        preset_btn.clicked.connect(self._show_preset_menu)
+        layout.addWidget(preset_btn)
+
+        layout.addSpacing(10)
 
         # Source language
         layout.addWidget(QLabel("Source:"))
@@ -192,6 +201,50 @@ class ControlsPanel(QWidget):
             code = "en"
 
         self.target_lang_changed.emit(code)
+
+    def _show_preset_menu(self):
+        """Show language preset menu"""
+        menu = QMenu(self)
+
+        # Common MTL presets
+        presets = [
+            ("Auto → English (Recommended for MTL)", "Auto-detect", "English (en)"),
+            ("Chinese → English", "Chinese (zh)", "English (en)"),
+            ("Japanese → English", "Japanese (ja)", "English (en)"),
+            ("Korean → English", "Korean (ko)", "English (en)"),
+            None,  # Separator
+            ("English → Chinese", "English (en)", "Chinese (zh)"),
+            ("English → Japanese", "English (en)", "Japanese (ja)"),
+            ("English → Korean", "English (en)", "Korean (ko)"),
+        ]
+
+        for preset in presets:
+            if preset is None:
+                menu.addSeparator()
+                continue
+
+            label, source, target = preset
+            action = QAction(label, self)
+            action.triggered.connect(lambda checked, s=source, t=target: self._apply_preset(s, t))
+            menu.addAction(action)
+
+        # Show menu below the preset button
+        preset_btn = self.sender()
+        menu.exec(preset_btn.mapToGlobal(preset_btn.rect().bottomLeft()))
+
+    def _apply_preset(self, source: str, target: str):
+        """Apply a language preset"""
+        # Set source language
+        for i in range(self.source_combo.count()):
+            if source in self.source_combo.itemText(i):
+                self.source_combo.setCurrentIndex(i)
+                break
+
+        # Set target language
+        for i in range(self.target_combo.count()):
+            if target in self.target_combo.itemText(i):
+                self.target_combo.setCurrentIndex(i)
+                break
 
     def set_processing_enabled(self, enabled: bool):
         """Enable/disable processing button"""
