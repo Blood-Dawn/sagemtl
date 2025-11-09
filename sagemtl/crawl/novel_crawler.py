@@ -95,7 +95,7 @@ class NovelCrawler:
 
     def build_chapter_url(self, pattern: dict[str, str], chapter_num: int) -> str:
         """Build a chapter URL from a pattern and chapter number."""
-        return pattern["pattern"].format(num=chapter_num)
+        return pattern["base_url"] + str(chapter_num) + pattern["suffix"]
 
     def fetch_chapter(
         self,
@@ -115,7 +115,7 @@ class NovelCrawler:
             html = response.text
 
             # Extract content
-            result = extract_main_content(
+            content_text = extract_main_content(
                 html,
                 allow_selectors=allow_selectors,
                 block_selectors=block_selectors,
@@ -126,17 +126,80 @@ class NovelCrawler:
             title_tag = soup.find("h1") or soup.find("title")
             title = title_tag.get_text(strip=True) if title_tag else f"Chapter {chapter_num}"
 
-            word_count = len(result["text"].split())
+            word_count = len(content_text.split())
 
             return ChapterInfo(
                 number=chapter_num,
                 title=title,
                 url=url,
-                content=result["text"],
+                content=content_text,
                 word_count=word_count,
             )
         except (httpx.HTTPError, Exception) as exc:
             print(f"Failed to fetch chapter {chapter_num} from {url}: {exc}")
+            return None
+
+    def _extract_first_chapter_url(self, toc_url: str) -> Optional[str]:
+        """
+        Extract the first chapter URL from a table of contents page.
+
+        This handles cases where the URL is a TOC page (e.g., with ?tab=chapters)
+        rather than a direct chapter link.
+
+        Returns the first valid chapter URL found, or None.
+        """
+        try:
+            response = self.client.get(toc_url)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "lxml")
+
+            # Find all links that might be chapters
+            chapter_link_patterns = [
+                # Look for links with "chapter" in href
+                (r"chapter[-_/](\d+)", lambda tag: tag.name == "a" and tag.get("href") and re.search(r"chapter[-_/](\d+)", tag.get("href"), re.I)),
+                # Look for links with just numbers (e.g., /1/, /2/)
+                (r"/(\d+)/", lambda tag: tag.name == "a" and tag.get("href") and re.match(r".*/(\d+)/?$", tag.get("href"))),
+                # Look for links with .html
+                (r"/(\d+)\.html", lambda tag: tag.name == "a" and tag.get("href") and re.search(r"/(\d+)\.html?$", tag.get("href"))),
+                # Look for ch prefix
+                (r"ch(\d+)", lambda tag: tag.name == "a" and tag.get("href") and re.search(r"ch(\d+)", tag.get("href"), re.I)),
+            ]
+
+            for pattern, link_filter in chapter_link_patterns:
+                links = soup.find_all(link_filter)
+
+                # Filter out query-string-only links and sort by chapter number
+                chapter_links = []
+                for link in links:
+                    href = link.get("href", "")
+
+                    # Skip if it's just a query string (like ?tab=chapters)
+                    if href.startswith("?") or href.startswith("#"):
+                        continue
+
+                    # Extract chapter number
+                    match = re.search(pattern, href, re.I)
+                    if match:
+                        chapter_num = int(match.group(1))
+                        # Make absolute URL if needed
+                        if href.startswith("/"):
+                            from urllib.parse import urlparse
+                            parsed = urlparse(toc_url)
+                            href = f"{parsed.scheme}://{parsed.netloc}{href}"
+                        elif not href.startswith("http"):
+                            href = toc_url.rsplit("/", 1)[0] + "/" + href
+
+                        chapter_links.append((chapter_num, href))
+
+                if chapter_links:
+                    # Sort by chapter number and return the first one
+                    chapter_links.sort(key=lambda x: x[0])
+                    return chapter_links[0][1]
+
+            return None
+
+        except Exception as exc:
+            print(f"Failed to extract chapter from TOC {toc_url}: {exc}")
             return None
 
     def crawl_novel(
@@ -152,9 +215,30 @@ class NovelCrawler:
         Crawl a novel's chapters from start to end.
 
         This uses pattern detection to automatically find subsequent chapters.
+        If start_url is a TOC page, it will attempt to find the first chapter link.
         """
-        # Detect pattern from start URL
+        # Try to detect pattern from start URL
         pattern = self.detect_chapter_pattern(start_url)
+
+        # If no pattern detected, try to extract first chapter from TOC
+        if not pattern:
+            print(f"No chapter pattern detected in {start_url}, attempting to find first chapter from TOC...")
+            first_chapter_url = self._extract_first_chapter_url(start_url)
+
+            if first_chapter_url:
+                print(f"Found first chapter: {first_chapter_url}")
+                pattern = self.detect_chapter_pattern(first_chapter_url)
+                if pattern:
+                    start_url = first_chapter_url
+                else:
+                    raise ValueError(f"Could not detect chapter pattern from extracted URL: {first_chapter_url}")
+            else:
+                raise ValueError(
+                    f"Could not detect chapter pattern from URL: {start_url}\n"
+                    f"URL appears to be a TOC page but no chapter links were found.\n"
+                    f"Please provide a direct chapter URL (e.g., .../chapter-1)"
+                )
+
         if not pattern:
             raise ValueError(f"Could not detect chapter pattern from URL: {start_url}")
 
