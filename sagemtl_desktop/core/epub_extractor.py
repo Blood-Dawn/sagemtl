@@ -162,6 +162,7 @@ class EPUBExtractor:
                     print(f"Warning: File not found in ZIP: {chapter_path}")
                     failed_count += 1
                 except Exception as e:
+                    failed_count += 1
                     print(f"Warning: Failed to extract {chapter_path}: {e}")
                     failed_count += 1
 

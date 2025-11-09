@@ -3,6 +3,7 @@ Novel crawler using LNCrawl (Lightnovel Crawler) as subprocess.
 """
 
 import subprocess
+import sys
 import tempfile
 import shutil
 from pathlib import Path
@@ -75,8 +76,9 @@ class Crawler:
         )
 
         # Base command with Python -c to set multiprocessing context
+        # Use sys.executable to ensure subprocess uses same Python (virtualenv) as parent
         cmd = [
-            "python", "-c", python_code,
+            sys.executable, "-c", python_code,
             "--suppress",  # Non-interactive mode
             "--format", "epub",
             "--output", str(self.output_dir),
