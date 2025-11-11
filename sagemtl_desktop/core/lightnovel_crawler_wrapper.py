@@ -6,10 +6,11 @@ while maintaining GPL v3 compliance (it's a separate dependency, not
 incorporated code).
 """
 import asyncio
+import sys
 import tempfile
 import shutil
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from sagemtl_desktop.core.crawler_interface import (
     CrawlerInterface,
     CrawledNovel,
@@ -18,8 +19,10 @@ from sagemtl_desktop.core.crawler_interface import (
 
 # Try to import lightnovel-crawler, but don't fail if it's not installed
 # This allows your app to work even if users haven't installed the optional dependency
+ln_arguments = None
 try:
     from lncrawl.core.app import App as LNCrawlApp
+    from lncrawl.core import arguments as ln_arguments
     from lncrawl.core.arguments import get_args
     LIGHTNOVEL_CRAWLER_AVAILABLE = True
 except ImportError:
@@ -93,7 +96,7 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         ]
 
         # Parse arguments using lightnovel-crawler's argument parser
-        args = get_args(args_list)
+        args = self._build_arguments(args_list)
 
         # Create and run the crawler app
         app = LNCrawlApp()
@@ -161,6 +164,18 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             author=None,  # Could extract from metadata if available
             chapters=chapters
         )
+
+    def _build_arguments(self, args_list):
+        """Construct the argparse namespace expected by lightnovel-crawler."""
+        previous_argv = list(sys.argv)
+        previous_namespace = ln_arguments._builder.arguments
+        try:
+            sys.argv = ['lncrawl'] + args_list
+            ln_arguments._builder.arguments = None
+            return get_args()
+        finally:
+            sys.argv = previous_argv
+            ln_arguments._builder.arguments = previous_namespace
 
     def _parse_chapters_from_text(self, text: str) -> List[CrawledChapter]:
         """

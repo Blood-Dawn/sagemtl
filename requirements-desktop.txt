@@ -1,23 +1,29 @@
 # SageMTL Desktop Application Requirements
 
 # Qt Framework for UI
-PySide6>=6.5.0
+PySide6==6.10.0
 
 # Translation Engine (offline)
-argostranslate>=1.8.0
+argostranslate==1.10.0
 
-# HTTP client for SageCrawler
-httpx>=0.27.0
+# Ensure prebuilt wheels are used for Python 3.13 to avoid local builds
+sentencepiece==0.2.1
+
+# Pin transitive dependencies that otherwise attempt source builds on Windows
+PyYAML==6.0.3
+
+# HTTP client for SageCrawler (pinned to satisfy python-telegram-bot dependency)
+httpx==0.26.0
 
 # Optional: Advanced web novel crawler (GPL v3 licensed)
 # Provides support for 455+ novel sites
-lightnovel-crawler>=3.10.0
+lightnovel-crawler==3.10.1
 
 # EPUB creation
-ebooklib>=0.18
+ebooklib==0.20
 
 # Structured logging
-python-json-logger>=2.0.7
+python-json-logger==4.0.0
 
 # Standard libraries (usually included with Python)
 # - zipfile (EPUB extraction)
@@ -30,4 +36,4 @@ python-json-logger>=2.0.7
 # - html.parser (HTML extraction)
 
 # Packaging
-pyinstaller>=5.13.0
+pyinstaller==6.16.0
