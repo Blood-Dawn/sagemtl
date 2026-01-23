@@ -17,9 +17,12 @@ A native desktop application for translating web novels (Chinese, Japanese, Kore
 - **Multiple Export Formats** - Save as TXT, EPUB, or Markdown
 
 ### Novel Crawling
-- **SageCrawler** - Fast async crawler with automatic chapter pattern detection
-- **Automatic Chapter Detection** - Recognizes common URL patterns (`chapter-N`, `/N/`, `ch-N.html`, etc.)
-- **Wide Site Support** - Works with many popular web novel sites through intelligent pattern matching
+- **Lightnovel-Crawler Integration** - Primary crawler with support for 460+ websites
+- **SageCrawler** - Fallback crawler with automatic chapter pattern detection  
+- **Wide Site Support** - Works with popular sites like Royal Road, Scribble Hub, WebNovel, WuxiaWorld, and 450+ more
+- **Multiple Languages** - Supports English, Chinese, Japanese, Korean, Spanish, French, Indonesian sites
+- **Automatic Chapter Detection** - Recognizes common URL patterns and site-specific structures
+- **Smart Crawler Selection** - Automatically uses the best crawler for each site
 
 ### Desktop Experience
 - **Native Qt Interface** - Built with PySide6 for responsive native performance
@@ -242,7 +245,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 💡 Inspiration
 
 This project was inspired by and builds upon ideas from:
-- **[lightnovel-crawler](https://github.com/dipu-bd/lightnovel-crawler)** - Excellent web novel crawler supporting 2000+ sites
+- **[lightnovel-crawler](https://github.com/lncrawl/lightnovel-crawler)** (GPL v3) - Primary crawler with 460+ supported sites. Developed by the lncrawl team and contributors. Provides robust chapter extraction and wide site compatibility.
 - **Argos Translate** - Open-source offline neural machine translation
 
 ---
@@ -258,29 +261,38 @@ Our native crawler uses intelligent pattern detection to work with a wide variet
 - **Best for**: General use, sites with standard chapter numbering
 - **Setup**: No additional installation needed
 
-### LightNovel-Crawler Integration (Optional)
-For maximum site compatibility, SageMTL can integrate with [lightnovel-crawler](https://github.com/dipu-bd/lightnovel-crawler), an excellent open-source project that supports 455+ web novel sites.
+### LightNovel-Crawler Integration (Recommended)
+For maximum site compatibility, SageMTL integrates with [lightnovel-crawler](https://github.com/lncrawl/lightnovel-crawler), an excellent open-source project that supports **460+ web novel sites** across multiple languages.
 
 - **License**: GPL v3 (separate component)
-- **Best for**: Specific sites with complex structures, maximum compatibility
-- **Setup**: `pip install lightnovel-crawler`
-- **Attribution**: This integration uses lightnovel-crawler as a library dependency. lightnovel-crawler is developed by dipu-bd and contributors. See their repository for full details.
+- **Supported Sites**: 460+ including Royal Road, Scribble Hub, WebNovel, WuxiaWorld, NovelFull, and more
+- **Languages**: English, Chinese, Japanese, Korean, Spanish, French, Indonesian, and more
+- **Setup**: Already included in `requirements-desktop.txt`
+- **Attribution**: This integration uses lightnovel-crawler as a library dependency. lightnovel-crawler is developed by the lncrawl team and contributors. See their [repository](https://github.com/lncrawl/lightnovel-crawler) for full details.
+
+### SageCrawler (Built-in Fallback)
+Our native crawler uses intelligent pattern detection to work with sites not supported by lightnovel-crawler.
+
+- **License**: MIT (same as SageMTL)
+- **Best for**: General use, sites with standard chapter numbering, fallback option
+- **Setup**: No additional installation needed
 
 The integration maintains license compliance by using lightnovel-crawler as a separate library dependency rather than incorporating its code into SageMTL. You can use SageMTL with either crawler or both.
 
 ### Choosing a Crawler
 
-When you click "Fetch from URL", you can select which crawler to use:
-- Use **SageCrawler** for most sites - it's fast and doesn't require additional dependencies
-- Use **LightNovel-Crawler** when SageCrawler doesn't work with a specific site, or when you need guaranteed support for a particular source
+The app automatically selects the best crawler for your URL:
+- **LightNovel-Crawler** is preferred by default (460+ sites supported)
+- **SageCrawler** is used as fallback when needed
+- You can change the preference in Settings
 
-The app will remember your preference, but you can switch at any time.
+Both crawlers work seamlessly within the app - the choice is transparent to you.
 
 ## Acknowledgments
 
 This project integrates with or was inspired by:
 
-- **[lightnovel-crawler](https://github.com/dipu-bd/lightnovel-crawler)** (GPL v3) - Optional integration for enhanced site support. Developed by dipu-bd and contributors. When installed, provides access to 455+ supported novel sites.
+- **[lightnovel-crawler](https://github.com/lncrawl/lightnovel-crawler)** (GPL v3) - Primary crawler integration for enhanced site support (460+ sites). Developed by the lncrawl team and contributors.
 - **Argos Translate** - Open-source offline neural machine translation
 
 ## License

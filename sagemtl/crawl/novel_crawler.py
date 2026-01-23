@@ -70,7 +70,30 @@ class NovelCrawler:
             https://example.com/novel/chapter-1 -> base=.../chapter-, pattern={num}
             https://example.com/novel/1.html -> base=.../, pattern={num}.html
         """
+
+        # FanMTL specific patterns: jp#######.html and jp#######_1.html
+        fanmtl_chapter = re.match(r"(https?://[^/]+/novel/(jp\d+)_)(\d+)\.html?", url, re.IGNORECASE)
+        if fanmtl_chapter:
+            return {
+                "base_url": fanmtl_chapter.group(1),
+                "pattern": fanmtl_chapter.group(1) + "{num}.html",
+                "current_num": int(fanmtl_chapter.group(3)),
+                "suffix": ".html",
+            }
+
+        fanmtl_toc = re.match(r"(https?://[^/]+/novel/(jp\d+))\.html?", url, re.IGNORECASE)
+        if fanmtl_toc:
+            base = fanmtl_toc.group(1) + "_"
+            return {
+                "base_url": base,
+                "pattern": base + "{num}.html",
+                "current_num": 1,
+                "suffix": ".html",
+            }
+
         patterns = [
+            # ..._1.html, ..._2.html
+            (r"(.*_)(\d+)(\.html?)", r"\1{num}\3"),
             # chapter-1, chapter-2, etc.
             (r"(.*chapter[-_])(\d+)(.*)", r"\1{num}\3"),
             # /1/, /2/, etc.
@@ -157,6 +180,8 @@ class NovelCrawler:
 
             # Find all links that might be chapters
             chapter_link_patterns = [
+                # FanMTL: jp12345_1.html
+                (r"jp\d+_(\d+)\.html?", lambda tag: tag.name == "a" and tag.get("href") and re.search(r"jp\d+_(\d+)\.html?", tag.get("href"), re.I)),
                 # Look for links with "chapter" in href
                 (r"chapter[-_/](\d+)", lambda tag: tag.name == "a" and tag.get("href") and re.search(r"chapter[-_/](\d+)", tag.get("href"), re.I)),
                 # Look for links with just numbers (e.g., /1/, /2/)
