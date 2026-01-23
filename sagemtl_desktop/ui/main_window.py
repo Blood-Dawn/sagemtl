@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
     QSplitter, QFileDialog, QMessageBox, QMenuBar, QMenu,
     QComboBox, QLabel, QGroupBox, QPushButton, QDialog, QTextEdit
 )
+from pathlib import Path
+
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QAction
 
@@ -220,11 +222,15 @@ class MainWindow(QMainWindow):
         self.processing_options.target_lang = target_lang
 
         if glossary_path:
-            try:
-                self.glossary.load_glossary(glossary_path)
-                self.processing_options.glossary_path = glossary_path
-            except Exception as e:
-                print(f"Failed to load saved glossary: {e}")
+            # Only attempt to load if the file still exists; otherwise clear the saved path.
+            if Path(glossary_path).exists():
+                try:
+                    self.glossary.load_glossary(glossary_path)
+                    self.processing_options.glossary_path = glossary_path
+                except Exception as e:
+                    print(f"Failed to load saved glossary: {e}")
+            else:
+                self.settings.remove("glossary_path")
 
     def _save_settings(self):
         """Save settings"""

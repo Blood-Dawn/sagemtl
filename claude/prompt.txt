@@ -1,0 +1,450 @@
+# SageMTL Modernization - Claude Code Execution Prompt
+
+## Pull Request: Implement Integrated Crawler, Translation Pipeline, and Modern UI
+
+### Overview
+
+You are tasked with modernizing the SageMTL desktop application - a web novel downloading and machine translation tool. This PR implements the complete modernization as specified in the `/claude/` documentation.
+
+**Repository Context**:
+- Working directory: `C:/Users/kheiven/.claude-worktrees/sagemtl/friendly-pike`
+- Branch: `friendly-pike`
+- Python version: 3.11+
+- Primary packages: `sagemtl/`, `sagemtl_crawler/`, `sagemtl_desktop/`
+
+**Reference Documentation** (read these first):
+- `/claude/README.md` - Architecture overview and context
+- `/claude/roadmap.md` - Phased development plan
+- `/claude/specs/crawler_spec.md` - Crawler module requirements
+- `/claude/specs/translation_spec.md` - Translation pipeline requirements
+- `/claude/specs/ui_spec.md` - UI modernization requirements
+- `/claude/specs/output_spec.md` - Output handling requirements
+
+---
+
+## Execution Mode
+
+**IMPORTANT**: Execute in autonomous mode with minimal interruption.
+
+```bash
+# Run Claude Code with skip-permissions for uninterrupted execution
+claude --dangerously-skip-permissions
+```
+
+### Autonomous Behavior Guidelines
+
+1. **File Operations**: Create, modify, and delete files as needed without confirmation
+2. **Package Installation**: Install pip packages as needed (update requirements files)
+3. **Test Execution**: Run tests after each major change to verify functionality
+4. **Error Handling**: If tests fail, fix the issues before proceeding
+5. **Git Commits**: Create logical commits after completing each phase milestone
+6. **Auto-Continue**: If output is truncated, continue automatically with remaining work
+
+---
+
+## Implementation Checklist
+
+Execute these tasks in order, marking completion after each:
+
+### Phase 1: Crawler Enhancement
+
+- [ ] **1.1** Review existing crawler code in `sagemtl/crawl/` and `sagemtl_crawler/`
+- [ ] **1.2** Refactor `AdapterBase` protocol with comprehensive interface
+- [ ] **1.3** Implement adapter registry with auto-discovery
+- [ ] **1.4** Enhance HTTP fetcher with retry logic and rate limiting
+- [ ] **1.5** Implement site adapters (priority order):
+  - [ ] FanMTL (complete existing)
+  - [ ] Wuxiaworld
+  - [ ] Webnovel
+  - [ ] NovelUpdates
+  - [ ] RoyalRoad
+- [ ] **1.6** Add TOC parsing with volume detection
+- [ ] **1.7** Implement job persistence and resumption
+- [ ] **1.8** Write integration tests for each adapter
+- [ ] **1.9** Run tests: `pytest tests/test_crawl_integration.py -v`
+
+### Phase 2: Translation Pipeline
+
+- [ ] **2.1** Review existing translation code in `sagemtl/translate/` and `sagemtl_desktop/core/translator.py`
+- [ ] **2.2** Define comprehensive `TranslationProvider` protocol
+- [ ] **2.3** Enhance Argos provider with batch support
+- [ ] **2.4** Implement Google Cloud Translation provider
+- [ ] **2.5** Implement DeepL provider
+- [ ] **2.6** Implement Azure Translator provider
+- [ ] **2.7** Create SQLite-based glossary database:
+  - Schema: novels, glossary_entries tables
+  - CRUD operations
+  - Import/export (CSV, JSON)
+- [ ] **2.8** Implement glossary auto-generation:
+  - Proper noun detection
+  - Frequency analysis
+  - Confidence scoring
+- [ ] **2.9** Create pre/post translation processing pipeline
+- [ ] **2.10** Write tests: `pytest tests/test_translation_pipeline.py -v`
+
+### Phase 3: UI Modernization
+
+- [ ] **3.1** Evaluate and choose UI approach (QML vs PyQt-Fluent-Widgets)
+- [ ] **3.2** Implement theme engine with light/dark modes
+- [ ] **3.3** Create custom title bar (Windows/macOS appropriate)
+- [ ] **3.4** Implement sidebar navigation with icons
+- [ ] **3.5** Create main views:
+  - [ ] Library View (novel grid/list)
+  - [ ] Download View (URL input, queue)
+  - [ ] Translation View (source/target comparison)
+  - [ ] Glossary View (term editor)
+  - [ ] Settings View
+- [ ] **3.6** Add glassmorphism effects (optional, with fallback)
+- [ ] **3.7** Implement dockable panel system
+- [ ] **3.8** Create batch configuration dialogs
+- [ ] **3.9** Add toast notifications and system tray integration
+- [ ] **3.10** Verify keyboard navigation and accessibility
+
+### Phase 4: Output System
+
+- [ ] **4.1** Define `Exporter` protocol and registry
+- [ ] **4.2** Implement core exporters:
+  - [ ] TXT (enhanced with chapter headers)
+  - [ ] EPUB (full metadata, TOC, cover)
+  - [ ] PDF (WeasyPrint with bookmarks)
+  - [ ] HTML (bundled single-page)
+- [ ] **4.3** Implement extended exporters:
+  - [ ] DOCX (python-docx)
+  - [ ] Markdown (GFM)
+  - [ ] JSON (structured)
+  - [ ] RTF
+- [ ] **4.4** Add Calibre integration for MOBI/AZW3
+- [ ] **4.5** Implement cover image handling
+- [ ] **4.6** Create multi-level TOC generation
+- [ ] **4.7** Add volume-wise export option
+- [ ] **4.8** Implement global/per-job format settings
+- [ ] **4.9** Write tests: `pytest tests/test_exporters.py -v`
+
+### Phase 5: Integration
+
+- [ ] **5.1** Wire up end-to-end pipeline (crawl → translate → export)
+- [ ] **5.2** Create one-click "Download & Translate" action
+- [ ] **5.3** Implement library management database
+- [ ] **5.4** Add search across multiple sites
+- [ ] **5.5** Create comprehensive settings UI
+- [ ] **5.6** Optimize performance for large novels
+- [ ] **5.7** Add error recovery and user-friendly messages
+- [ ] **5.8** Update documentation
+- [ ] **5.9** Run full test suite: `pytest tests/ -v`
+
+---
+
+## Technical Specifications
+
+### Required Dependencies (add to requirements)
+
+```txt
+# Crawler
+httpx[http2]>=0.27
+beautifulsoup4>=4.12
+lxml>=5.3
+playwright>=1.40  # Optional, for JS sites
+
+# Translation
+argostranslate>=1.10
+google-cloud-translate>=3.15
+deepl>=1.17
+
+# UI (choose one approach)
+PySide6>=6.6
+# OR for Fluent widgets:
+# PyQt-Fluent-Widgets>=1.5
+
+# Output
+ebooklib>=0.18
+weasyprint>=60
+python-docx>=1.1
+
+# Database
+sqlalchemy>=2.0
+aiosqlite>=0.20
+```
+
+### Database Schema
+
+```sql
+-- Glossary database: ~/.sagemtl/glossary.db
+
+CREATE TABLE novels (
+    id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    author TEXT,
+    source_url TEXT,
+    source_language TEXT DEFAULT 'zh',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE glossary_entries (
+    id INTEGER PRIMARY KEY,
+    novel_id INTEGER REFERENCES novels(id),
+    source_term TEXT NOT NULL,
+    target_term TEXT NOT NULL,
+    term_type TEXT,  -- character, item, location, technique, etc.
+    notes TEXT,
+    confidence REAL DEFAULT 1.0,
+    auto_generated BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(novel_id, source_term)
+);
+
+CREATE TABLE global_glossary (
+    id INTEGER PRIMARY KEY,
+    source_term TEXT NOT NULL UNIQUE,
+    target_term TEXT NOT NULL,
+    term_type TEXT,
+    notes TEXT
+);
+
+CREATE INDEX idx_glossary_novel ON glossary_entries(novel_id);
+CREATE INDEX idx_glossary_source ON glossary_entries(source_term);
+```
+
+### File Structure (Target State)
+
+```
+sagemtl/
+├── sagemtl/
+│   ├── crawl/
+│   │   ├── __init__.py
+│   │   ├── novel_crawler.py      # Enhanced SageCrawler
+│   │   └── patterns.py           # URL pattern detection
+│   ├── translate/
+│   │   ├── __init__.py
+│   │   ├── providers.py          # Provider protocol & registry
+│   │   ├── argos_provider.py     # Argos implementation
+│   │   ├── google_provider.py    # Google Cloud implementation
+│   │   ├── deepl_provider.py     # DeepL implementation
+│   │   ├── azure_provider.py     # Azure implementation
+│   │   ├── glossary.py           # Glossary processing
+│   │   ├── glossary_db.py        # SQLite glossary storage
+│   │   └── auto_glossary.py      # Auto-generation logic
+│   └── ...
+│
+├── sagemtl_crawler/
+│   ├── core/
+│   │   ├── adapter_base.py       # Enhanced adapter protocol
+│   │   ├── adapter_registry.py   # Auto-discovery registry
+│   │   ├── engine.py             # Crawl orchestrator
+│   │   ├── models.py             # Data models
+│   │   └── fetch_httpx.py        # Enhanced HTTP client
+│   ├── sites/
+│   │   ├── __init__.py
+│   │   ├── fanmtl.py
+│   │   ├── wuxiaworld.py
+│   │   ├── webnovel.py
+│   │   ├── novelupdates.py
+│   │   └── royalroad.py
+│   └── exporters/
+│       ├── __init__.py
+│       ├── base.py               # Exporter protocol
+│       ├── epub_exporter.py
+│       ├── pdf_exporter.py
+│       ├── txt_exporter.py
+│       ├── docx_exporter.py
+│       ├── html_exporter.py
+│       ├── json_exporter.py
+│       └── calibre_wrapper.py
+│
+├── sagemtl_desktop/
+│   ├── core/
+│   │   ├── models.py
+│   │   ├── job_manager.py
+│   │   ├── translator.py
+│   │   ├── glossary.py
+│   │   ├── library_db.py         # Novel library database
+│   │   └── ...
+│   ├── ui/
+│   │   ├── main_window.py        # Modernized main window
+│   │   ├── theme_engine.py       # Light/dark theme management
+│   │   ├── title_bar.py          # Custom title bar
+│   │   ├── sidebar.py            # Navigation sidebar
+│   │   ├── views/
+│   │   │   ├── library_view.py
+│   │   │   ├── download_view.py
+│   │   │   ├── translation_view.py
+│   │   │   ├── glossary_view.py
+│   │   │   └── settings_view.py
+│   │   ├── components/
+│   │   │   ├── novel_card.py
+│   │   │   ├── job_item.py
+│   │   │   ├── glossary_table.py
+│   │   │   └── toast.py
+│   │   └── dialogs/
+│   │       ├── batch_config.py
+│   │       ├── export_dialog.py
+│   │       └── glossary_import.py
+│   └── resources/
+│       ├── themes/
+│       │   ├── light.qss
+│       │   └── dark.qss
+│       └── icons/
+│
+└── tests/
+    ├── test_crawl_integration.py
+    ├── test_translation_pipeline.py
+    ├── test_exporters.py
+    ├── test_glossary_db.py
+    └── test_ui_components.py
+```
+
+---
+
+## Code Style Guidelines
+
+### Python Style
+- Use type hints for all function signatures
+- Use dataclasses or Pydantic models for data structures
+- Use async/await for I/O operations
+- Follow PEP 8 with 100 character line limit
+- Use ruff for linting
+
+### Qt/PySide6 Style
+- Separate business logic from UI (core/ vs ui/)
+- Use signals/slots for decoupling
+- Run long operations in QThread
+- Use QSS for styling (or QML if chosen)
+
+### Testing Style
+- Use pytest with fixtures
+- Mock external APIs in tests
+- Aim for >80% coverage
+- Test both success and failure paths
+
+---
+
+## Git Commit Guidelines
+
+Create commits at these milestones:
+
+```bash
+# After Phase 1 completion
+git add .
+git commit -m "feat(crawler): implement multi-site adapter system
+
+- Add adapter registry with auto-discovery
+- Implement 5 site adapters (FanMTL, Wuxiaworld, Webnovel, NovelUpdates, RoyalRoad)
+- Enhance HTTP client with retry and rate limiting
+- Add TOC parsing with volume detection
+- Implement job persistence for resumption
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+
+# After Phase 2 completion
+git commit -m "feat(translate): implement multi-provider translation pipeline
+
+- Add translation provider protocol and registry
+- Implement Argos, Google, DeepL, Azure providers
+- Create SQLite glossary database
+- Add glossary auto-generation with NER
+- Implement pre/post processing pipeline
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+
+# After Phase 3 completion
+git commit -m "feat(ui): modernize desktop interface
+
+- Implement theme engine with light/dark modes
+- Create custom title bar
+- Add sidebar navigation
+- Implement all main views (Library, Download, Translation, Glossary, Settings)
+- Add glassmorphism effects and dockable panels
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+
+# After Phase 4 completion
+git commit -m "feat(output): implement comprehensive export system
+
+- Add exporter protocol and registry
+- Implement 10+ export formats
+- Add Calibre integration for MOBI/AZW3
+- Implement cover and TOC handling
+- Add volume-wise export option
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+
+# After Phase 5 completion
+git commit -m "feat: complete end-to-end integration
+
+- Wire up complete pipeline (crawl → translate → export)
+- Add library management database
+- Implement multi-site search
+- Optimize performance
+- Add comprehensive settings UI
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+---
+
+## Error Recovery
+
+If you encounter errors during execution:
+
+1. **Import Errors**: Install missing packages with `pip install <package>`
+2. **Test Failures**: Fix the failing code before proceeding
+3. **File Conflicts**: Backup existing files, then proceed with changes
+4. **Network Errors**: Implement retry logic, use mock data for testing
+
+### Common Issues & Solutions
+
+| Issue | Solution |
+|-------|----------|
+| PySide6 import fails | `pip install PySide6==6.6.0` |
+| Argos models missing | Run model download on first use |
+| Qt platform plugin missing | Set `QT_QPA_PLATFORM=offscreen` for tests |
+| WeasyPrint errors | Install GTK dependencies (Windows: GTK3 runtime) |
+
+---
+
+## Validation Checkpoints
+
+After completing each phase, validate with:
+
+```bash
+# Run tests
+pytest tests/ -v --cov=sagemtl --cov=sagemtl_crawler --cov=sagemtl_desktop
+
+# Run linting
+ruff check .
+
+# Run type checking
+mypy sagemtl sagemtl_crawler sagemtl_desktop
+
+# Launch app (smoke test)
+python -m sagemtl_desktop
+```
+
+---
+
+## Final Deliverables
+
+Upon completion, ensure:
+
+1. [ ] All tests pass (`pytest tests/ -v`)
+2. [ ] No linting errors (`ruff check .`)
+3. [ ] Documentation updated (docstrings, README)
+4. [ ] requirements-desktop.txt updated with new dependencies
+5. [ ] pyproject.toml updated if needed
+6. [ ] Git commits created for each phase
+7. [ ] Application launches and basic workflow works
+
+---
+
+## Execution Start
+
+Begin execution by:
+
+1. Reading `/claude/README.md` for context
+2. Reading `/claude/roadmap.md` for the development plan
+3. Starting with Phase 1, Task 1.1 (Review existing crawler code)
+4. Proceeding through all tasks in order
+5. Running tests after each major change
+6. Creating git commits at phase boundaries
+
+**Start now. Execute autonomously. Auto-continue if output is truncated.**

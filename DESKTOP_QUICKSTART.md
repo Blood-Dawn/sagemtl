@@ -12,7 +12,7 @@ python -m venv .venv
 .venv\Scripts\activate
 
 # Activate (Linux/Mac)
-# source .venv/bin/activate
+source .venv/bin/activate
 
 # Install requirements
 pip install -r requirements-desktop.txt

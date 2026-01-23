@@ -50,6 +50,10 @@ class ChapterRef:
     title: str
     url: str
     volume: Optional[str] = None
+    volume_index: Optional[int] = None  # Index of the volume this chapter belongs to
+    is_locked: bool = False  # Whether chapter requires premium/payment
+    translator: Optional[str] = None  # Translator/group name (for aggregators)
+    release_date: Optional[datetime] = None  # When the chapter was released
 
 
 @dataclass
@@ -60,6 +64,23 @@ class ChapterContent:
     text: str  # Plain text version
     images: List[str] = field(default_factory=list)  # Image URLs found in content
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Navigation
+    next_url: Optional[str] = None  # URL to next chapter
+    prev_url: Optional[str] = None  # URL to previous chapter
+    # Additional content
+    original_text: Optional[str] = None  # Original language text (for MTL sites)
+    author_notes: Optional[List[str]] = None  # Author notes extracted separately
+    source_url: Optional[str] = None  # Actual source URL (if different from ref.url)
+
+
+@dataclass
+class VolumeInfo:
+    """Information about a novel volume"""
+    index: int
+    title: str
+    start_chapter: int  # First chapter index in this volume
+    end_chapter: Optional[int] = None  # Last chapter index (if known)
+    cover_url: Optional[str] = None
 
 
 @dataclass
@@ -71,13 +92,24 @@ class NovelTOC:
     cover_url: Optional[str] = None
     description: Optional[str] = None
     chapters: List[ChapterRef] = field(default_factory=list)
-    volumes: List[str] = field(default_factory=list)
-    status: str = "Unknown"  # Ongoing, Completed, Hiatus, etc.
+    volumes: Optional[List[Any]] = None  # Can be List[str], List[VolumeInfo], or List[dict]
+    status: str = "Unknown"  # Ongoing, Completed, Hiatus, Dropped, etc.
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Additional metadata
+    genres: Optional[List[str]] = None  # Genre tags
+    rating: Optional[float] = None  # Site rating (typically 1-5 or 1-10)
+    original_title: Optional[str] = None  # Original language title
+    novel_type: Optional[str] = None  # CN, KR, JP, EN, etc.
+    total_pages: Optional[int] = None  # Total page count (for sites like Royal Road)
+    total_words: Optional[int] = None  # Total word count
 
     @property
     def total_chapters(self) -> int:
         return len(self.chapters)
+
+    def get_volume_chapters(self, volume_index: int) -> List[ChapterRef]:
+        """Get all chapters belonging to a specific volume"""
+        return [ch for ch in self.chapters if ch.volume_index == volume_index]
 
 
 @dataclass
@@ -92,6 +124,10 @@ class SearchHit:
     chapter_count: Optional[int] = None
     status: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Additional fields
+    rating: Optional[float] = None  # Site rating
+    genres: Optional[List[str]] = None  # Genre tags
+    original_title: Optional[str] = None  # Original language title
 
 
 @dataclass

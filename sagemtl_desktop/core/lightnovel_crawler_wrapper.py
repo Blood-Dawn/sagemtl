@@ -7,6 +7,7 @@ incorporated code).
 """
 import asyncio
 import sys
+import subprocess
 import tempfile
 import shutil
 from pathlib import Path
@@ -16,6 +17,7 @@ from sagemtl_desktop.core.crawler_interface import (
     CrawledNovel,
     CrawledChapter
 )
+from sagemtl_desktop.core.epub_extractor import EPUBExtractor
 
 # Try to import lightnovel-crawler, but don't fail if it's not installed
 # This allows your app to work even if users haven't installed the optional dependency
@@ -85,30 +87,29 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         what would normally be command-line arguments to lightnovel-crawler.
         """
         # Prepare arguments for lightnovel-crawler
-        # We're simulating: lncrawl -s URL -o OUTPUT_PATH --format txt --all --suppress
+        # We're simulating: lncrawl -s URL -o OUTPUT_PATH --format text --all --suppress
         args_list = [
             '-s', url,  # Source URL
             '-o', self.temp_dir,  # Output directory
-            '--format', 'txt',  # Text format for easy parsing
+            '--format', 'text',  # Text format for easy parsing (lncrawl >=3 uses 'text')
             '--all',  # Download all chapters
             '--suppress',  # No interactive prompts
             '--close-directly'  # Don't wait for user input at the end
         ]
 
-        # Parse arguments using lightnovel-crawler's argument parser
-        args = self._build_arguments(args_list)
-
-        # Create and run the crawler app
-        app = LNCrawlApp()
-        app.initialize(args)
-
-        # Progress tracking is tricky with lightnovel-crawler since it doesn't
-        # expose a callback API. We'll call the callback at key milestones instead.
+        # Run the CLI in a subprocess for maximum compatibility across lncrawl versions.
+        # Equivalent to: python -m lncrawl <args_list>
         if progress_callback:
             progress_callback(0, 100, "Initializing lightnovel-crawler...")
 
-        # Start the crawling process
-        app.start()
+        cmd = [sys.executable, '-m', 'lncrawl'] + args_list
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"lightnovel-crawler failed (exit {result.returncode}):\n"
+                f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+            )
 
         if progress_callback:
             progress_callback(50, 100, "Crawling chapters...")
@@ -135,47 +136,60 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         """
         temp_path = Path(self.temp_dir)
 
-        # Find the novel directory (usually there's only one)
-        novel_dirs = [d for d in temp_path.iterdir() if d.is_dir()]
+        # Prefer text outputs; search recursively to handle different lncrawl layouts
+        text_files = list(temp_path.rglob('*.txt')) + list(temp_path.rglob('*.text'))
+        if text_files:
+            text_file = text_files[0]
+            novel_title = text_file.stem
 
-        if not novel_dirs:
-            raise ValueError("No novel data found in crawler output")
+            with open(text_file, 'r', encoding='utf-8') as f:
+                content = f.read()
 
-        novel_dir = novel_dirs[0]
-        novel_title = novel_dir.name
+            chapters = self._parse_chapters_from_text(content)
+            return CrawledNovel(
+                title=novel_title,
+                author=None,
+                chapters=chapters
+            )
 
-        # Find the TXT file (format: NovelName.txt)
-        txt_files = list(novel_dir.glob('*.txt'))
+        # Fallback: parse EPUB output if present
+        epub_files = list(temp_path.rglob('*.epub'))
+        if epub_files:
+            epub_file = epub_files[0]
+            novel_title = epub_file.stem
+            extractor = EPUBExtractor()
+            full_text, chapter_texts = extractor.extract(str(epub_file))
 
-        if not txt_files:
-            raise ValueError("No text file found in crawler output")
+            chapters = [
+                CrawledChapter(title=f"Chapter {i}", content=ch_text, chapter_number=i)
+                for i, ch_text in enumerate(chapter_texts, start=1)
+            ]
+            # If extractor returned no chapter list, treat as single chapter
+            if not chapters and full_text:
+                chapters = [CrawledChapter(title="Complete Novel", content=full_text, chapter_number=1)]
 
-        # Read the combined text file
-        # lightnovel-crawler puts all chapters in one file with markers
-        with open(txt_files[0], 'r', encoding='utf-8') as f:
-            content = f.read()
+            return CrawledNovel(
+                title=novel_title,
+                author=None,
+                chapters=chapters
+            )
 
-        # Parse chapters from the combined text
-        # lightnovel-crawler uses specific patterns to separate chapters
-        chapters = self._parse_chapters_from_text(content)
-
-        return CrawledNovel(
-            title=novel_title,
-            author=None,  # Could extract from metadata if available
-            chapters=chapters
-        )
+        # Nothing found
+        raise ValueError("No supported output (txt/text/epub) found in crawler output")
 
     def _build_arguments(self, args_list):
-        """Construct the argparse namespace expected by lightnovel-crawler."""
+        """Deprecated: kept for backward compatibility; not used now."""
         previous_argv = list(sys.argv)
-        previous_namespace = ln_arguments._builder.arguments
+        previous_namespace = ln_arguments._builder.arguments if ln_arguments else None
         try:
             sys.argv = ['lncrawl'] + args_list
-            ln_arguments._builder.arguments = None
-            return get_args()
+            if ln_arguments:
+                ln_arguments._builder.arguments = None
+            return get_args() if ln_arguments else None
         finally:
             sys.argv = previous_argv
-            ln_arguments._builder.arguments = previous_namespace
+            if ln_arguments:
+                ln_arguments._builder.arguments = previous_namespace
 
     def _parse_chapters_from_text(self, text: str) -> List[CrawledChapter]:
         """
