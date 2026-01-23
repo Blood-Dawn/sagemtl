@@ -7,6 +7,9 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+# Skip this module: SageCrawler removed; app now uses lightnovel-crawler exclusively.
+pytest.skip("SageCrawler deprecated; using lncrawl-only crawler", allow_module_level=True)
+
 from sagemtl.crawl.novel_crawler import NovelCrawler, ChapterInfo
 
 

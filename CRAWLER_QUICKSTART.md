@@ -94,14 +94,13 @@ See the [lightnovel-crawler README](https://github.com/lncrawl/lightnovel-crawle
 
 ```
 You paste a URL
-        ↓
+    ↓
 App detects the site
-        ↓
+    ↓
 Uses lightnovel-crawler (460+ sites)
-OR Falls back to SageCrawler
-        ↓
+    ↓
 Downloads chapters
-        ↓
+    ↓
 Ready for translation!
 ```
 
@@ -148,8 +147,7 @@ settings = QSettings("SageMTL", "SageMTL")
 # Use lightnovel-crawler (default)
 settings.setValue("preferred_crawler", "lightnovel")
 
-# Use SageCrawler instead
-settings.setValue("preferred_crawler", "sage")
+# Lightnovel-crawler is the only crawler; no alternative needed
 ```
 
 ## Testing

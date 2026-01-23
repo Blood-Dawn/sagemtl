@@ -1,9 +1,7 @@
-"""SageCrawler - Novel crawler with automatic chapter detection.
+"""SageCrawler (removed).
 
-This module provides:
-1. Built-in chapter detection for common novel site patterns
-2. Automatic URL pattern recognition
-3. Fast async HTTP requests for chapter fetching
+This module has been deprecated and removed in favor of using
+lightnovel-crawler as the sole crawler engine.
 """
 
 from __future__ import annotations
@@ -43,21 +41,11 @@ class NovelInfo:
 
 
 class NovelCrawler:
-    """Built-in novel crawler with chapter detection."""
+    """Deprecated: Use lightnovel-crawler instead."""
 
-    def __init__(
-        self,
-        max_concurrent: int = 3,
-        timeout: float = 30.0,
-        user_agent: str = "SageMTL/1.0",
-    ):
-        self.max_concurrent = max_concurrent
-        self.timeout = timeout
-        self.user_agent = user_agent
-        self.client = httpx.Client(
-            timeout=timeout,
-            headers={"User-Agent": user_agent},
-            follow_redirects=True,
+    def __init__(self, *args, **kwargs):
+        raise RuntimeError(
+            "SageCrawler has been removed. Please use lightnovel-crawler."
         )
 
     def detect_chapter_pattern(self, url: str) -> Optional[dict[str, str]]:

@@ -346,7 +346,7 @@ def jobs_purge(
     typer.echo(f"Removed {len(removed)} jobs")
 
 
-@crawl_app.command("novel", help="Crawl a novel from supported sites")
+@crawl_app.command("novel", help="Deprecated: SageCrawler removed; use lightnovel-crawler")
 def crawl_novel(
     url: Annotated[str, typer.Argument(help="Novel URL")],
     start: Annotated[int, typer.Option("--start", "-s", help="Start chapter")] = 1,
@@ -354,31 +354,16 @@ def crawl_novel(
     name: Annotated[Optional[str], typer.Option("--name", "-n", help="Dataset name")] = None,
     wait: Annotated[bool, typer.Option("--wait/--no-wait", help="Wait for completion")] = True,
 ) -> None:
-    """Crawl a novel using SageCrawler."""
-    from sagemtl.crawl.novel_crawler import NovelCrawler
+    """Deprecated command: SageCrawler has been removed.
 
-    # Get data directory
-    data_dir = Path.home() / ".sagemtl" / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    typer.echo("Using SageCrawler...")
-    try:
-        crawler = NovelCrawler()
-        novel_info = crawler.crawl_novel(
-            start_url=url,
-            start_chapter=start,
-            end_chapter=end or 999,
-            dataset_name=name,
-        )
-        dataset_path = crawler.save_to_dataset(novel_info, data_dir, format="txt")
-        typer.echo(f"✓ Crawled {len(novel_info.chapters)} chapters")
-        typer.echo(f"✓ Saved to: {dataset_path}")
-        typer.echo(f"✓ Title: {novel_info.title}")
-        if novel_info.author:
-            typer.echo(f"✓ Author: {novel_info.author}")
-    except Exception as exc:
-        typer.secho(f"✗ Error: {exc}", err=True, fg=typer.colors.RED)
-        raise typer.Exit(1)
+    Please use the desktop app (LightNovelCrawler integration) or
+    install lightnovel-crawler and use its CLI/library.
+    """
+    typer.secho(
+        "SageCrawler has been removed. Use LightNovelCrawler (desktop app) or lncrawl CLI.",
+        fg=typer.colors.YELLOW,
+    )
+    raise typer.Exit(2)
 
 
 @settings_app.command("show", help="Show current configuration")

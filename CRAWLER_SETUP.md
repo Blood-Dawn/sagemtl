@@ -4,7 +4,7 @@ SageMTL supports two crawler backends. This guide explains how to set up and use
 
 ## Quick Comparison
 
-| Feature | SageCrawler | LightNovel-Crawler |
+| Feature | LightNovel-Crawler |
 |---------|-------------|-------------------|
 | Installation | Included | `pip install lightnovel-crawler` |
 | Site Support | Pattern-based (many sites) | 455+ specifically supported sites |
@@ -12,9 +12,13 @@ SageMTL supports two crawler backends. This guide explains how to set up and use
 | Speed | Fast | Moderate (more thorough) |
 | Best For | General use | Specific sites, maximum compatibility |
 
-## Using SageCrawler (Default)
+## Using LightNovel-Crawler (Default)
 
-SageCrawler is built into SageMTL and requires no additional setup. It works well with most web novel sites that use standard chapter numbering patterns.
+SageMTL uses lightnovel-crawler by default. Install via:
+
+```bash
+pip install lightnovel-crawler
+```
 
 **Strengths:**
 - No additional dependencies
@@ -39,7 +43,7 @@ pip install lightnovel-crawler
 1. Launch SageMTL
 2. The app will automatically detect lightnovel-crawler if installed
 3. Enter your novel URL and click "Fetch from URL"
-4. The app will prefer lightnovel-crawler if available, otherwise use SageCrawler
+4. The app uses lightnovel-crawler exclusively for crawling
 
 ### Supported Sites
 

@@ -19,13 +19,12 @@ from .export_dialog import ExportDialog
 
 from ..core import (
     JobManager, Translator, GlossaryProcessor,
-    Crawler, EPUBExtractor, Exporter,
+    EPUBExtractor, Exporter,
     Job, JobType, JobStatus, ProcessingOptions,
     ImportManager, get_logger
 )
 
 # New crawler wrappers
-from ..core.sage_crawler_wrapper import SageCrawlerWrapper
 from ..core.lightnovel_crawler_wrapper import (
     LightNovelCrawlerWrapper,
     LIGHTNOVEL_CRAWLER_AVAILABLE
@@ -47,22 +46,24 @@ class MainWindow(QMainWindow):
         self.job_manager = JobManager(self)
         self.translator = Translator()
         self.glossary = GlossaryProcessor()
-        self.crawler = Crawler()  # Keep for compatibility
         self.epub_extractor = EPUBExtractor()
         self.exporter = Exporter()
         self.import_manager = ImportManager()
         self.logger = get_logger()
 
-        # New crawler wrappers
-        self.sage_crawler = SageCrawlerWrapper()
+        # Initialize lightnovel-crawler (required)
         self.lightnovel_crawler = None
-
-        # Try to initialize lightnovel-crawler if available
         if LIGHTNOVEL_CRAWLER_AVAILABLE:
             try:
                 self.lightnovel_crawler = LightNovelCrawlerWrapper()
             except ImportError:
-                pass  # User hasn't installed it, that's okay
+                self.lightnovel_crawler = None
+        if self.lightnovel_crawler is None:
+            QMessageBox.critical(
+                self,
+                "LightNovel-Crawler Missing",
+                "lightnovel-crawler is required. Please install it via pip:\n\n    pip install lightnovel-crawler"
+            )
 
         # Processing options
         self.processing_options = ProcessingOptions()
@@ -243,8 +244,7 @@ class MainWindow(QMainWindow):
         # Stop all jobs
         self.job_manager.stop_all_jobs()
 
-        # Cleanup crawler
-        self.crawler.cleanup()
+        # No legacy crawler to clean up
 
         event.accept()
 
@@ -340,16 +340,11 @@ class MainWindow(QMainWindow):
         Get the currently selected crawler instance.
 
         Returns:
-            CrawlerInterface: Either SageCrawler or LightNovelCrawler
+            CrawlerInterface: LightNovelCrawler
         """
-        # For now, prefer lightnovel-crawler if available, else use SageCrawler
-        # Later we can add UI selection
-        crawler_pref = self.settings.value("preferred_crawler", "lightnovel")
-
-        if crawler_pref == "lightnovel" and self.lightnovel_crawler:
-            return self.lightnovel_crawler
-        else:
-            return self.sage_crawler
+        if not self.lightnovel_crawler:
+            raise RuntimeError("lightnovel-crawler is not available")
+        return self.lightnovel_crawler
 
     def _on_fetch_url(self, url: str):
         """Handle fetch URL"""
