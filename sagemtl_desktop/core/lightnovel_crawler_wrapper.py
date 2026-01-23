@@ -187,64 +187,117 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
 
     def supports_url(self, url: str) -> bool:
         """
-        Check if lightnovel-crawler supports this URL.
+        Check if lightnovel-crawler supports this URL with robust domain matching.
         
-        lncrawl has a crawler registry we can query to check URL support.
+        Strategy:
+        - Parse the URL's netloc (domain) and compare against each source's homes.
+        - Treat a source as supporting the URL if the URL's netloc equals or endswith
+          any home domain (handles subdomains like www., m., etc.).
+        - As a secondary check, look for any home URL substring in the full URL.
         """
         if not LIGHTNOVEL_CRAWLER_AVAILABLE:
             return False
-        
+
         try:
+            from urllib.parse import urlparse
             from lncrawl.core.sources import crawler_list
-            
-            # Check if any crawler can handle this URL
+
+            parsed = urlparse(url)
+            netloc = parsed.netloc.lower()
+            if not netloc:
+                return False
+
             for crawler in crawler_list:
-                # Each crawler class has a method to check if it supports a URL
                 try:
-                    if hasattr(crawler, 'home') and isinstance(crawler.home, list):
-                        # crawler.home contains list of supported URLs/patterns
-                        for home_url in crawler.home:
-                            if home_url in url:
+                    homes = getattr(crawler, 'home', [])
+                    if not isinstance(homes, list):
+                        continue
+                    for home in homes:
+                        if not home:
+                            continue
+                        home_str = str(home).lower()
+                        # Extract domain if home is a full URL, else treat as domain/pattern
+                        domain = None
+                        if home_str.startswith('http://') or home_str.startswith('https://'):
+                            try:
+                                domain = urlparse(home_str).netloc.lower()
+                            except Exception:
+                                domain = None
+                        else:
+                            domain = home_str
+
+                        # Domain match (handles subdomains)
+                        if domain:
+                            if netloc == domain or netloc.endswith('.' + domain):
                                 return True
-                except (AttributeError, TypeError):
+                        # Fallback: substring match on full URL
+                        if home_str and home_str in url.lower():
+                            return True
+                except Exception:
                     continue
-            
+
             return False
         except Exception:
-            # If we can't check, be optimistic and return True
-            # lncrawl supports 460+ sites, so chances are good
-            return True
+            # Be conservative: unknown error → not supported
+            return False
 
     def get_supported_sites(self) -> List[str]:
         """
-        Return a list of sites supported by lightnovel-crawler.
+        Return a user-friendly list of supported sites.
         
-        lncrawl supports 460+ sites across multiple languages.
+        Format: "domain (SourceName)". The list is de-duplicated and sorted.
+        Results are cached per instance for performance.
         """
         if not LIGHTNOVEL_CRAWLER_AVAILABLE:
             return []
-        
+
+        # Simple per-instance cache
+        cache_attr = '_supported_sites_cache'
+        cached = getattr(self, cache_attr, None)
+        if isinstance(cached, list) and cached:
+            return cached
+
         try:
+            from urllib.parse import urlparse
             from lncrawl.core.sources import crawler_list
-            
-            sites = set()
+
+            entries = {}
             for crawler in crawler_list:
                 try:
-                    if hasattr(crawler, 'home') and isinstance(crawler.home, list):
-                        for home_url in crawler.home:
-                            # Extract domain from URL
-                            if 'http' in home_url:
-                                # Parse domain from full URL
-                                import re
-                                match = re.search(r'https?://([^/]+)', home_url)
-                                if match:
-                                    sites.add(match.group(1))
-                            else:
-                                sites.add(home_url)
-                except (AttributeError, TypeError):
+                    homes = getattr(crawler, 'home', [])
+                    if not isinstance(homes, list):
+                        continue
+                    # Use class name as source label
+                    label = getattr(crawler, '__name__', 'UnknownSource')
+                    for home in homes:
+                        if not home:
+                            continue
+                        home_str = str(home)
+                        domain = None
+                        if home_str.startswith('http://') or home_str.startswith('https://'):
+                            try:
+                                domain = urlparse(home_str).netloc
+                            except Exception:
+                                domain = None
+                        else:
+                            domain = home_str
+                        if domain:
+                            # Keep the first label encountered for the domain
+                            entries.setdefault(domain, label)
+                except Exception:
                     continue
-            
-            # Return sorted list
-            return sorted(sites) if sites else ["460+ sites supported"]
+
+        
+            # Build formatted list and sort
+            result = [f"{d} ({entries[d]})" for d in entries.keys()]
+            result.sort(key=lambda s: s.lower())
+
+            # Fallback text if empty
+            if not result:
+                result = ["460+ sites supported (lightnovel-crawler)"]
+
+            # Cache and return
+            setattr(self, cache_attr, result)
+            return result
         except Exception:
             return ["460+ sites supported (lightnovel-crawler)"]
