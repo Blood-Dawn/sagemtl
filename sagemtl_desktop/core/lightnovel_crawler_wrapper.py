@@ -23,13 +23,16 @@ LIGHTNOVEL_CRAWLER_AVAILABLE = False
 try:
     from lncrawl.core.app import App as LNCrawlApp
     from lncrawl.core.arguments import get_args
+    from lncrawl.core.exeptions import LNException
     LIGHTNOVEL_CRAWLER_AVAILABLE = True
 except ImportError as e:
     # Store the error for debugging
     _import_error = str(e)
+    LNException = None
 except Exception as e:
     # Catch any other errors during import
     _import_error = f"Unexpected error: {str(e)}"
+    LNException = None
 
 
 class LightNovelCrawlerWrapper(CrawlerInterface):
@@ -102,15 +105,16 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             app.pack_by_volume = False
             
             if progress_callback:
-                progress_callback(10, 100, "Fetching novel information...")
-            
-            # Initialize the app
-            app.init_search()
-            
+                progress_callback(10, 100, "Searching for crawler/support...")
+
+            # Prepare and search for appropriate crawler/site adapter
+            app.prepare_search()
+            app.search_novel()
+
             if progress_callback:
                 progress_callback(30, 100, "Downloading chapters...")
-            
-            # Start downloading
+
+            # Start downloading chapters to the output path
             app.start_download()
             
             if progress_callback:
@@ -125,6 +129,12 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             return novel
             
         except Exception as e:
+            # Check if it's an unsupported site error from lncrawl
+            if LNException and isinstance(e, LNException):
+                raise RuntimeError(
+                    f"Site not supported by lightnovel-crawler. {str(e)}\n\n"
+                    "Check supported sites via Help > View Supported Sites in the app."
+                )
             raise RuntimeError(f"Failed to crawl novel: {str(e)}")
 
     def _extract_novel_from_json(self) -> CrawledNovel:

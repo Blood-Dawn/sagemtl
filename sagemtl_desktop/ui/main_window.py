@@ -148,10 +148,17 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
-        # Edit menu
+        # Edit menu (placeholder)
         edit_menu = menubar.addMenu("&Edit")
 
         clear_action = QAction("&Clear All Jobs", self)
+
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+
+        supported_sites_action = QAction("&View Supported Sites...", self)
+        supported_sites_action.triggered.connect(self._on_supported_sites)
+        help_menu.addAction(supported_sites_action)
         clear_action.triggered.connect(self._on_clear_jobs)
         edit_menu.addAction(clear_action)
 
@@ -345,6 +352,42 @@ class MainWindow(QMainWindow):
         if not self.lightnovel_crawler:
             raise RuntimeError("lightnovel-crawler is not available")
         return self.lightnovel_crawler
+
+    def _on_supported_sites(self):
+        """Show a dialog listing supported sites from lightnovel-crawler."""
+        try:
+            crawler = self.get_selected_crawler()
+        except Exception:
+            QMessageBox.critical(
+                self,
+                "Crawler Missing",
+                "lightnovel-crawler is required. Please install it via pip:\n\n    pip install lightnovel-crawler",
+            )
+            return
+
+        sites = crawler.get_supported_sites() if crawler else []
+        if not sites:
+            QMessageBox.information(
+                self,
+                "Supported Sites",
+                "No sites available. Ensure lightnovel-crawler is installed.",
+            )
+            return
+
+        # Build text listing
+        text = "\n".join(sites[:300])  # cap to first ~300 entries for dialog
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Supported Sites (lightnovel-crawler)")
+        dlg.resize(600, 500)
+        editor = QTextEdit(dlg)
+        editor.setReadOnly(True)
+        editor.setPlainText(text)
+
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(editor)
+        dlg.setLayout(layout)
+        dlg.exec()
 
     def _on_fetch_url(self, url: str):
         """Handle fetch URL"""
