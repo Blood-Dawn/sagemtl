@@ -143,13 +143,13 @@ class ControlsPanel(QWidget):
 
     def _create_url_fetch_group(self) -> QGroupBox:
         """Create URL fetch group"""
-        group = QGroupBox("Fetch Novel from URL")
+        group = QGroupBox("Fetch Novel")
         layout = QHBoxLayout(group)
 
-        layout.addWidget(QLabel("URL:"))
+        layout.addWidget(QLabel("URL or Name:"))
 
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("https://example.com/novel/chapter-1")
+        self.url_input.setPlaceholderText("https://example.com/novel or search for novel name")
         layout.addWidget(self.url_input)
 
         fetch_btn = QPushButton("Fetch")

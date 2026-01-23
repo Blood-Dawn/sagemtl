@@ -57,12 +57,28 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         # was designed to save files rather than return data in memory.
         self.temp_dir = None
 
-    async def fetch_novel(self, url: str, progress_callback=None) -> CrawledNovel:
+    @staticmethod
+    def is_url(input_str: str) -> bool:
+        """
+        Detect if input is a URL or a novel name.
+        
+        Returns True if input looks like a URL (starts with http/https).
+        Returns False if it looks like a novel name (plain text).
+        """
+        input_str = input_str.strip()
+        return input_str.lower().startswith(('http://', 'https://'))
+
+    async def fetch_novel(self, url: str, progress_callback=None, max_chapters: int = None) -> CrawledNovel:
         """
         Use lightnovel-crawler to fetch the novel.
 
         This method integrates with lncrawl's API to download novels.
         It uses JSON format for easy parsing of structured chapter data.
+        
+        Args:
+            url: Novel URL to download
+            progress_callback: Optional callback for progress updates
+            max_chapters: Optional limit on number of chapters to download (for testing)
         """
         # Create a temporary directory for this crawl operation
         self.temp_dir = tempfile.mkdtemp(prefix='sagemtl_lncrawl_')
@@ -73,7 +89,8 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
                 None,
                 self._run_crawler_sync,
                 url,
-                progress_callback
+                progress_callback,
+                max_chapters
             )
             return novel
         finally:
@@ -81,16 +98,147 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             if self.temp_dir and Path(self.temp_dir).exists():
                 shutil.rmtree(self.temp_dir)
 
-    def _run_crawler_sync(self, url: str, progress_callback) -> CrawledNovel:
+    async def search_novel_by_name(self, novel_name: str, progress_callback=None) -> List[Dict[str, Any]]:
+        """
+        Search for a novel by name and return available options.
+        
+        Returns a list of dicts with keys:
+        - title: Novel title
+        - url: URL to fetch
+        - site: Source site name
+        
+        This uses lncrawl's interactive search functionality to find novels
+        across multiple sites.
+        """
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._search_novel_sync,
+                novel_name,
+                progress_callback
+            )
+            return result
+        except Exception as e:
+            if LNException and isinstance(e, LNException):
+                raise RuntimeError(
+                    f"Search failed: {str(e)}\n\n"
+                    "Check supported sites via Help > View Supported Sites in the app."
+                )
+            raise RuntimeError(f"Failed to search for novel: {str(e)}")
+
+    def _search_novel_sync(self, novel_name: str, progress_callback) -> List[Dict[str, Any]]:
+        """
+        Run novel search synchronously using lncrawl's API.
+        """
+        import sys
+        
+        if progress_callback:
+            progress_callback(0, 100, f"Loading sources...")
+
+        try:
+            # Temporarily override sys.argv to avoid argparse conflicts with pytest
+            original_argv = sys.argv
+            sys.argv = ['lncrawl']
+            
+            # Load sources first (required for search to work)
+            from lncrawl.core.sources import load_sources
+            load_sources()
+            
+            # Restore original argv
+            sys.argv = original_argv
+            
+            if progress_callback:
+                progress_callback(10, 100, f"Searching for '{novel_name}' across supported sites...")
+            
+            # Create the app instance
+            app = LNCrawlApp()
+            
+            # Set search query
+            app.user_input = novel_name
+            
+            if progress_callback:
+                progress_callback(20, 100, "Preparing search...")
+
+            # Prepare search (configures which crawlers to use)
+            app.prepare_search()
+            
+            if progress_callback:
+                progress_callback(30, 100, f"Searching across {len(app.crawler_links)} sites...")
+
+            # Run the search
+            app.search_novel()
+            
+            if progress_callback:
+                progress_callback(90, 100, "Processing results...")
+
+            # Extract search results
+            # search_results should be a list of Result objects with .novel and .origin attributes
+            results = []
+            if hasattr(app, 'search_results') and app.search_results:
+                for result in app.search_results:
+                    try:
+                        # Each result has .novel (with .url) and .origin (source)
+                        novel = result.novel if hasattr(result, 'novel') else result
+                        origin = result.origin if hasattr(result, 'origin') else 'Unknown'
+                        
+                        url = None
+                        title = None
+                        
+                        if hasattr(novel, 'url'):
+                            url = novel.url
+                        if hasattr(novel, 'title'):
+                            title = novel.title
+                        
+                        if url and title:
+                            results.append({
+                                'title': title,
+                                'url': url,
+                                'site': str(origin)
+                            })
+                    except Exception:
+                        # Skip malformed results
+                        continue
+            
+            if progress_callback:
+                progress_callback(100, 100, f"Found {len(results)} results")
+
+            return results
+            
+        except Exception as e:
+            if LNException and isinstance(e, LNException):
+                raise
+            raise RuntimeError(f"Search error: {str(e)}")
+
+    def _run_crawler_sync(self, url: str, progress_callback, max_chapters: int = None) -> CrawledNovel:
         """
         Run lightnovel-crawler synchronously using programmatic API.
         
         This integrates with lncrawl's crawler directly without using CLI.
+        
+        Args:
+            url: Novel URL to download
+            progress_callback: Callback for progress updates
+            max_chapters: Optional limit on number of chapters to download (for testing)
         """
+        import threading
+        import time
+        import sys
+        
         if progress_callback:
             progress_callback(0, 100, "Initializing lightnovel-crawler...")
 
         try:
+            # Temporarily override sys.argv to avoid argparse conflicts with pytest
+            original_argv = sys.argv
+            sys.argv = ['lncrawl']
+            
+            # Load sources first (required for download to work)
+            from lncrawl.core.sources import load_sources
+            load_sources()
+            
+            # Restore original argv
+            sys.argv = original_argv
+            
             # Create the app instance
             app = LNCrawlApp()
             
@@ -111,11 +259,57 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             app.prepare_search()
             app.search_novel()
 
+            # Limit chapters if max_chapters is specified
+            if max_chapters is not None and hasattr(app, 'crawler') and app.crawler:
+                original_chapters = getattr(app.crawler, 'chapters', [])
+                if len(original_chapters) > max_chapters:
+                    app.crawler.chapters = original_chapters[:max_chapters]
+                    if progress_callback:
+                        progress_callback(20, 100, f"Limited to first {max_chapters} chapters for testing")
+
             if progress_callback:
                 progress_callback(30, 100, "Downloading chapters...")
 
-            # Start downloading chapters to the output path
-            app.start_download()
+            # Create signal for graceful interruption
+            signal = threading.Event()
+            
+            # Start download in a thread so we can monitor progress
+            download_thread = threading.Thread(
+                target=lambda: app.start_download(signal=signal)
+            )
+            download_thread.daemon = True
+            download_thread.start()
+            
+            # Monitor progress while downloading
+            last_reported_progress = 0
+            while download_thread.is_alive():
+                try:
+                    # Get current progress
+                    novel_progress = getattr(app, 'fetch_novel_progress', 0) or 0
+                    chapter_progress = getattr(app, 'fetch_chapter_progress', 0) or 0
+                    images_progress = getattr(app, 'fetch_images_progress', 0) or 0
+                    
+                    # Combine progress (novel 40%, chapters 40%, images 20%)
+                    combined_progress = (novel_progress * 0.4) + (chapter_progress * 0.4) + (images_progress * 0.2)
+                    combined_progress = min(combined_progress, 99)  # Never reach 100% until complete
+                    
+                    # Only report if significantly changed (avoid too many updates)
+                    if combined_progress - last_reported_progress >= 1:
+                        if progress_callback:
+                            progress_callback(
+                                30 + int(combined_progress * 0.5),  # Map to 30-80 range
+                                100,
+                                f"Downloading chapters... ({int(combined_progress)}%)"
+                            )
+                        last_reported_progress = combined_progress
+                    
+                    time.sleep(0.5)  # Check progress every 500ms
+                except Exception:
+                    # If we can't get progress, just wait
+                    time.sleep(1)
+            
+            # Wait for thread to fully complete
+            download_thread.join(timeout=5)
             
             if progress_callback:
                 progress_callback(80, 100, "Processing downloaded content...")
