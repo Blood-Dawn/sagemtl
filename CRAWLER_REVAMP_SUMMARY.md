@@ -43,10 +43,8 @@ JSON output → Parsed into CrawledNovel
 ### 3. Integration Points
 
 **Existing Integration** (`sagemtl_desktop/ui/main_window.py`):
-- Already had crawler selection logic
-- Prefers lightnovel-crawler when available
-- Falls back to SageCrawler automatically
-- Settings-based preference system
+- Uses lightnovel-crawler exclusively
+- Settings no longer required for crawler selection
 
 **No Changes Needed**: The integration was already set up! We just completed the wrapper implementation.
 

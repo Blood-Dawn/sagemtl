@@ -148,8 +148,9 @@ sagemtl/
 │   └── resources/           # Icons, stylesheets
 │
 ├── sagemtl/                 # Core library (reusable)
-│   ├── crawl/              # Web crawling
-│   │   └── novel_crawler.py     # SageCrawler implementation
+│   ├── crawl/              # HTML extraction helpers (non-network)
+│   │   ├── extract.py           # Main-text extraction utilities
+│   │   └── pipeline.py          # Boilerplate removal + block parsing
 │   ├── translate/          # Translation pipeline
 │   ├── clean/              # Text normalization
 │   └── jobs/               # Job state management
@@ -163,7 +164,7 @@ sagemtl/
 
 - **UI Framework**: PySide6 (Qt6) - Native desktop widgets
 - **Translation**: Argos Translate - Offline neural translation models
-- **Crawling**: httpx (async HTTP) + BeautifulSoup4 (HTML parsing)
+- **Crawling**: lightnovel-crawler (lncrawl) for network crawling; BeautifulSoup4 for local HTML extraction
 - **EPUB Processing**: zipfile + xml.etree.ElementTree + ebooklib
 - **Job Management**: Threading + custom job queue system
 - **Testing**: pytest + pytest-asyncio
@@ -196,9 +197,9 @@ The executable bundles Python runtime and dependencies but **does not include tr
 - Korean → English
 
 ### Novel Sources
-- Direct URL crawling: Works with any site that has sequential chapter URLs
-- Automatic pattern detection for common chapter numbering schemes
-- Supports popular sites including NovelUpdates, WuxiaWorld, RoyalRoad, ScribbleHub, and many more
+- Direct URL crawling powered by lightnovel-crawler (460+ supported sites)
+- Multi-language site support (English, Chinese, Japanese, Korean, etc.)
+- See Supported Sources in the lncrawl repo for the full list
 
 ---
 
@@ -210,9 +211,6 @@ pip install pytest pytest-asyncio
 
 # Run all tests
 pytest
-
-# Run specific test file
-pytest tests/test_novel_crawler.py
 
 # Run with verbose output
 pytest -v

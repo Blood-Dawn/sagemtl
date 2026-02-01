@@ -23,13 +23,16 @@ LIGHTNOVEL_CRAWLER_AVAILABLE = False
 try:
     from lncrawl.core.app import App as LNCrawlApp
     from lncrawl.core.arguments import get_args
+    from lncrawl.core.exeptions import LNException
     LIGHTNOVEL_CRAWLER_AVAILABLE = True
 except ImportError as e:
     # Store the error for debugging
     _import_error = str(e)
+    LNException = None
 except Exception as e:
     # Catch any other errors during import
     _import_error = f"Unexpected error: {str(e)}"
+    LNException = None
 
 
 class LightNovelCrawlerWrapper(CrawlerInterface):
@@ -54,12 +57,28 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         # was designed to save files rather than return data in memory.
         self.temp_dir = None
 
-    async def fetch_novel(self, url: str, progress_callback=None) -> CrawledNovel:
+    @staticmethod
+    def is_url(input_str: str) -> bool:
+        """
+        Detect if input is a URL or a novel name.
+        
+        Returns True if input looks like a URL (starts with http/https).
+        Returns False if it looks like a novel name (plain text).
+        """
+        input_str = input_str.strip()
+        return input_str.lower().startswith(('http://', 'https://'))
+
+    async def fetch_novel(self, url: str, progress_callback=None, max_chapters: int = None) -> CrawledNovel:
         """
         Use lightnovel-crawler to fetch the novel.
 
         This method integrates with lncrawl's API to download novels.
         It uses JSON format for easy parsing of structured chapter data.
+        
+        Args:
+            url: Novel URL to download
+            progress_callback: Optional callback for progress updates
+            max_chapters: Optional limit on number of chapters to download (for testing)
         """
         # Create a temporary directory for this crawl operation
         self.temp_dir = tempfile.mkdtemp(prefix='sagemtl_lncrawl_')
@@ -70,7 +89,8 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
                 None,
                 self._run_crawler_sync,
                 url,
-                progress_callback
+                progress_callback,
+                max_chapters
             )
             return novel
         finally:
@@ -78,16 +98,147 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             if self.temp_dir and Path(self.temp_dir).exists():
                 shutil.rmtree(self.temp_dir)
 
-    def _run_crawler_sync(self, url: str, progress_callback) -> CrawledNovel:
+    async def search_novel_by_name(self, novel_name: str, progress_callback=None) -> List[Dict[str, Any]]:
+        """
+        Search for a novel by name and return available options.
+        
+        Returns a list of dicts with keys:
+        - title: Novel title
+        - url: URL to fetch
+        - site: Source site name
+        
+        This uses lncrawl's interactive search functionality to find novels
+        across multiple sites.
+        """
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._search_novel_sync,
+                novel_name,
+                progress_callback
+            )
+            return result
+        except Exception as e:
+            if LNException and isinstance(e, LNException):
+                raise RuntimeError(
+                    f"Search failed: {str(e)}\n\n"
+                    "Check supported sites via Help > View Supported Sites in the app."
+                )
+            raise RuntimeError(f"Failed to search for novel: {str(e)}")
+
+    def _search_novel_sync(self, novel_name: str, progress_callback) -> List[Dict[str, Any]]:
+        """
+        Run novel search synchronously using lncrawl's API.
+        """
+        import sys
+        
+        if progress_callback:
+            progress_callback(0, 100, f"Loading sources...")
+
+        try:
+            # Temporarily override sys.argv to avoid argparse conflicts with pytest
+            original_argv = sys.argv
+            sys.argv = ['lncrawl']
+            
+            # Load sources first (required for search to work)
+            from lncrawl.core.sources import load_sources
+            load_sources()
+            
+            # Restore original argv
+            sys.argv = original_argv
+            
+            if progress_callback:
+                progress_callback(10, 100, f"Searching for '{novel_name}' across supported sites...")
+            
+            # Create the app instance
+            app = LNCrawlApp()
+            
+            # Set search query
+            app.user_input = novel_name
+            
+            if progress_callback:
+                progress_callback(20, 100, "Preparing search...")
+
+            # Prepare search (configures which crawlers to use)
+            app.prepare_search()
+            
+            if progress_callback:
+                progress_callback(30, 100, f"Searching across {len(app.crawler_links)} sites...")
+
+            # Run the search
+            app.search_novel()
+            
+            if progress_callback:
+                progress_callback(90, 100, "Processing results...")
+
+            # Extract search results
+            # search_results should be a list of Result objects with .novel and .origin attributes
+            results = []
+            if hasattr(app, 'search_results') and app.search_results:
+                for result in app.search_results:
+                    try:
+                        # Each result has .novel (with .url) and .origin (source)
+                        novel = result.novel if hasattr(result, 'novel') else result
+                        origin = result.origin if hasattr(result, 'origin') else 'Unknown'
+                        
+                        url = None
+                        title = None
+                        
+                        if hasattr(novel, 'url'):
+                            url = novel.url
+                        if hasattr(novel, 'title'):
+                            title = novel.title
+                        
+                        if url and title:
+                            results.append({
+                                'title': title,
+                                'url': url,
+                                'site': str(origin)
+                            })
+                    except Exception:
+                        # Skip malformed results
+                        continue
+            
+            if progress_callback:
+                progress_callback(100, 100, f"Found {len(results)} results")
+
+            return results
+            
+        except Exception as e:
+            if LNException and isinstance(e, LNException):
+                raise
+            raise RuntimeError(f"Search error: {str(e)}")
+
+    def _run_crawler_sync(self, url: str, progress_callback, max_chapters: int = None) -> CrawledNovel:
         """
         Run lightnovel-crawler synchronously using programmatic API.
         
         This integrates with lncrawl's crawler directly without using CLI.
+        
+        Args:
+            url: Novel URL to download
+            progress_callback: Callback for progress updates
+            max_chapters: Optional limit on number of chapters to download (for testing)
         """
+        import threading
+        import time
+        import sys
+        
         if progress_callback:
             progress_callback(0, 100, "Initializing lightnovel-crawler...")
 
         try:
+            # Temporarily override sys.argv to avoid argparse conflicts with pytest
+            original_argv = sys.argv
+            sys.argv = ['lncrawl']
+            
+            # Load sources first (required for download to work)
+            from lncrawl.core.sources import load_sources
+            load_sources()
+            
+            # Restore original argv
+            sys.argv = original_argv
+            
             # Create the app instance
             app = LNCrawlApp()
             
@@ -102,16 +253,63 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             app.pack_by_volume = False
             
             if progress_callback:
-                progress_callback(10, 100, "Fetching novel information...")
-            
-            # Initialize the app
-            app.init_search()
-            
+                progress_callback(10, 100, "Searching for crawler/support...")
+
+            # Prepare and search for appropriate crawler/site adapter
+            app.prepare_search()
+            app.search_novel()
+
+            # Limit chapters if max_chapters is specified
+            if max_chapters is not None and hasattr(app, 'crawler') and app.crawler:
+                original_chapters = getattr(app.crawler, 'chapters', [])
+                if len(original_chapters) > max_chapters:
+                    app.crawler.chapters = original_chapters[:max_chapters]
+                    if progress_callback:
+                        progress_callback(20, 100, f"Limited to first {max_chapters} chapters for testing")
+
             if progress_callback:
                 progress_callback(30, 100, "Downloading chapters...")
+
+            # Create signal for graceful interruption
+            signal = threading.Event()
             
-            # Start downloading
-            app.start_download()
+            # Start download in a thread so we can monitor progress
+            download_thread = threading.Thread(
+                target=lambda: app.start_download(signal=signal)
+            )
+            download_thread.daemon = True
+            download_thread.start()
+            
+            # Monitor progress while downloading
+            last_reported_progress = 0
+            while download_thread.is_alive():
+                try:
+                    # Get current progress
+                    novel_progress = getattr(app, 'fetch_novel_progress', 0) or 0
+                    chapter_progress = getattr(app, 'fetch_chapter_progress', 0) or 0
+                    images_progress = getattr(app, 'fetch_images_progress', 0) or 0
+                    
+                    # Combine progress (novel 40%, chapters 40%, images 20%)
+                    combined_progress = (novel_progress * 0.4) + (chapter_progress * 0.4) + (images_progress * 0.2)
+                    combined_progress = min(combined_progress, 99)  # Never reach 100% until complete
+                    
+                    # Only report if significantly changed (avoid too many updates)
+                    if combined_progress - last_reported_progress >= 1:
+                        if progress_callback:
+                            progress_callback(
+                                30 + int(combined_progress * 0.5),  # Map to 30-80 range
+                                100,
+                                f"Downloading chapters... ({int(combined_progress)}%)"
+                            )
+                        last_reported_progress = combined_progress
+                    
+                    time.sleep(0.5)  # Check progress every 500ms
+                except Exception:
+                    # If we can't get progress, just wait
+                    time.sleep(1)
+            
+            # Wait for thread to fully complete
+            download_thread.join(timeout=5)
             
             if progress_callback:
                 progress_callback(80, 100, "Processing downloaded content...")
@@ -125,6 +323,12 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             return novel
             
         except Exception as e:
+            # Check if it's an unsupported site error from lncrawl
+            if LNException and isinstance(e, LNException):
+                raise RuntimeError(
+                    f"Site not supported by lightnovel-crawler. {str(e)}\n\n"
+                    "Check supported sites via Help > View Supported Sites in the app."
+                )
             raise RuntimeError(f"Failed to crawl novel: {str(e)}")
 
     def _extract_novel_from_json(self) -> CrawledNovel:
@@ -187,64 +391,117 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
 
     def supports_url(self, url: str) -> bool:
         """
-        Check if lightnovel-crawler supports this URL.
+        Check if lightnovel-crawler supports this URL with robust domain matching.
         
-        lncrawl has a crawler registry we can query to check URL support.
+        Strategy:
+        - Parse the URL's netloc (domain) and compare against each source's homes.
+        - Treat a source as supporting the URL if the URL's netloc equals or endswith
+          any home domain (handles subdomains like www., m., etc.).
+        - As a secondary check, look for any home URL substring in the full URL.
         """
         if not LIGHTNOVEL_CRAWLER_AVAILABLE:
             return False
-        
+
         try:
+            from urllib.parse import urlparse
             from lncrawl.core.sources import crawler_list
-            
-            # Check if any crawler can handle this URL
+
+            parsed = urlparse(url)
+            netloc = parsed.netloc.lower()
+            if not netloc:
+                return False
+
             for crawler in crawler_list:
-                # Each crawler class has a method to check if it supports a URL
                 try:
-                    if hasattr(crawler, 'home') and isinstance(crawler.home, list):
-                        # crawler.home contains list of supported URLs/patterns
-                        for home_url in crawler.home:
-                            if home_url in url:
+                    homes = getattr(crawler, 'home', [])
+                    if not isinstance(homes, list):
+                        continue
+                    for home in homes:
+                        if not home:
+                            continue
+                        home_str = str(home).lower()
+                        # Extract domain if home is a full URL, else treat as domain/pattern
+                        domain = None
+                        if home_str.startswith('http://') or home_str.startswith('https://'):
+                            try:
+                                domain = urlparse(home_str).netloc.lower()
+                            except Exception:
+                                domain = None
+                        else:
+                            domain = home_str
+
+                        # Domain match (handles subdomains)
+                        if domain:
+                            if netloc == domain or netloc.endswith('.' + domain):
                                 return True
-                except (AttributeError, TypeError):
+                        # Fallback: substring match on full URL
+                        if home_str and home_str in url.lower():
+                            return True
+                except Exception:
                     continue
-            
+
             return False
         except Exception:
-            # If we can't check, be optimistic and return True
-            # lncrawl supports 460+ sites, so chances are good
-            return True
+            # Be conservative: unknown error → not supported
+            return False
 
     def get_supported_sites(self) -> List[str]:
         """
-        Return a list of sites supported by lightnovel-crawler.
+        Return a user-friendly list of supported sites.
         
-        lncrawl supports 460+ sites across multiple languages.
+        Format: "domain (SourceName)". The list is de-duplicated and sorted.
+        Results are cached per instance for performance.
         """
         if not LIGHTNOVEL_CRAWLER_AVAILABLE:
             return []
-        
+
+        # Simple per-instance cache
+        cache_attr = '_supported_sites_cache'
+        cached = getattr(self, cache_attr, None)
+        if isinstance(cached, list) and cached:
+            return cached
+
         try:
+            from urllib.parse import urlparse
             from lncrawl.core.sources import crawler_list
-            
-            sites = set()
+
+            entries = {}
             for crawler in crawler_list:
                 try:
-                    if hasattr(crawler, 'home') and isinstance(crawler.home, list):
-                        for home_url in crawler.home:
-                            # Extract domain from URL
-                            if 'http' in home_url:
-                                # Parse domain from full URL
-                                import re
-                                match = re.search(r'https?://([^/]+)', home_url)
-                                if match:
-                                    sites.add(match.group(1))
-                            else:
-                                sites.add(home_url)
-                except (AttributeError, TypeError):
+                    homes = getattr(crawler, 'home', [])
+                    if not isinstance(homes, list):
+                        continue
+                    # Use class name as source label
+                    label = getattr(crawler, '__name__', 'UnknownSource')
+                    for home in homes:
+                        if not home:
+                            continue
+                        home_str = str(home)
+                        domain = None
+                        if home_str.startswith('http://') or home_str.startswith('https://'):
+                            try:
+                                domain = urlparse(home_str).netloc
+                            except Exception:
+                                domain = None
+                        else:
+                            domain = home_str
+                        if domain:
+                            # Keep the first label encountered for the domain
+                            entries.setdefault(domain, label)
+                except Exception:
                     continue
-            
-            # Return sorted list
-            return sorted(sites) if sites else ["460+ sites supported"]
+
+        
+            # Build formatted list and sort
+            result = [f"{d} ({entries[d]})" for d in entries.keys()]
+            result.sort(key=lambda s: s.lower())
+
+            # Fallback text if empty
+            if not result:
+                result = ["460+ sites supported (lightnovel-crawler)"]
+
+            # Cache and return
+            setattr(self, cache_attr, result)
+            return result
         except Exception:
             return ["460+ sites supported (lightnovel-crawler)"]

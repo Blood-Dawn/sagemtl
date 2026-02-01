@@ -7,7 +7,7 @@ This document describes the complete architecture for the rebuilt sageMTL Window
 - **Language:** Python 3.11+
 - **UI Framework:** PySide6 (Qt6)
 - **Translation Engine:** Argos Translate (offline models)
-- **Crawler:** SageCrawler with automatic chapter detection
+- **Crawler:** lightnovel-crawler (lncrawl) for novel downloading
 - **Packaging:** PyInstaller (one-folder mode)
 - **Platform:** Windows (primary), cross-platform capable
 
@@ -24,7 +24,7 @@ sagemtl/
 │   │   ├── job_manager.py    # Job queue with threading
 │   │   ├── translator.py     # Argos Translate wrapper
 │   │   ├── glossary.py       # CSV glossary processor
-│   │   ├── crawler.py        # SageCrawler wrapper
+│   │   ├── crawler.py        # (Removed) legacy SageCrawler wrapper
 │   │   ├── epub_extractor.py # EPUB parsing and extraction
 │   │   ├── exporter.py       # Export cleaned text
 │   │   └── models.py         # Data models (Job, ProcessingOptions, etc.)

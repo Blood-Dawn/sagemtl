@@ -18,6 +18,9 @@ from unittest.mock import Mock, patch
 
 import httpx
 import pytest
+
+# Skip this module: SageCrawler removed; app now uses lightnovel-crawler exclusively.
+pytest.skip("SageCrawler deprecated; using lncrawl-only crawler", allow_module_level=True)
 from bs4 import BeautifulSoup
 
 from sagemtl.crawl.novel_crawler import NovelCrawler, ChapterInfo, NovelInfo

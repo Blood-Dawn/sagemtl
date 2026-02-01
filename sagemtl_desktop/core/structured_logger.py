@@ -6,7 +6,12 @@ import logging
 import logging.handlers
 from pathlib import Path
 from typing import Optional
-from pythonjsonlogger import jsonlogger
+
+try:
+    from pythonjsonlogger.json import JsonFormatter
+except ImportError:
+    # Fallback for older versions
+    from pythonjsonlogger.jsonlogger import JsonFormatter
 
 
 class StructuredLogger:
@@ -47,7 +52,7 @@ class StructuredLogger:
         file_handler.setLevel(logging.DEBUG)
 
         # JSON formatter for file
-        json_formatter = jsonlogger.JsonFormatter(
+        json_formatter = JsonFormatter(
             fmt='%(asctime)s %(levelname)s %(name)s %(message)s',
             rename_fields={
                 'asctime': 'ts',

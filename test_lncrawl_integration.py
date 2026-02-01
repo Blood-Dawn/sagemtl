@@ -6,15 +6,20 @@ Run this to verify that lncrawl is properly integrated and working.
 import asyncio
 import sys
 from pathlib import Path
+import pytest
 
 # Add project to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
+
 from sagemtl_desktop.core.lightnovel_crawler_wrapper import (
     LightNovelCrawlerWrapper,
     LIGHTNOVEL_CRAWLER_AVAILABLE
 )
+
+# Skip when run under pytest; this is a standalone integration script.
+pytest.skip("Standalone integration script; skip under pytest", allow_module_level=True)
 
 
 def progress_callback(current, total, message):

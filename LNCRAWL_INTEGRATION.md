@@ -21,8 +21,8 @@ SageMTL integrates lncrawl through a wrapper layer:
 User Interface (PySide6)
         ↓
 CrawlerInterface (ABC)
-    ↓           ↓
-LNCrawlWrapper  SageCrawlerWrapper (fallback)
+        ↓
+LightNovelCrawlerWrapper
     ↓
 lightnovel-crawler library
 ```
@@ -40,32 +40,21 @@ lightnovel-crawler library
    - Manages temporary files and output parsing
    - Provides progress callbacks to the UI
 
-3. **SageCrawlerWrapper** (`sagemtl_desktop/core/sage_crawler_wrapper.py`)
-   - Fallback crawler using pattern detection
-   - Works when lncrawl doesn't support a site
+3. (Removed) SageCrawlerWrapper
+    - SageCrawler has been removed; lncrawl is the sole crawler engine
 
 ## Usage
 
 ### In the Desktop App
 
-The desktop app automatically uses lncrawl when available:
+The desktop app uses lncrawl exclusively:
 
 1. **Fetch from URL**: Enter any supported novel URL
-2. The app checks which crawler supports the URL
-3. Preference given to lncrawl (460+ sites)
-4. Falls back to SageCrawler if needed
+2. lncrawl handles crawling and chapter extraction
 
 ### Crawler Selection
 
-Configure in Settings or set programmatically:
-
-```python
-# Prefer lightnovel-crawler
-settings.setValue("preferred_crawler", "lightnovel")
-
-# Use SageCrawler
-settings.setValue("preferred_crawler", "sage")
-```
+No selection needed; lncrawl is the default and only crawler.
 
 ### Programmatic Usage
 

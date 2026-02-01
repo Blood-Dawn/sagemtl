@@ -14,18 +14,20 @@ from .file_list_panel import FileListPanel
 from .preview_panel import PreviewPanel
 from .controls_panel import ControlsPanel
 from .log_panel import LogPanel
-from .dialogs import ErrorDialog, CrawlOptionsDialog, AboutDialog
+from .dialogs import (
+    ErrorDialog, CrawlOptionsDialog, AboutDialog, SearchResultsDialog,
+    SearchProgressDialog, DownloadProgressDialog
+)
 from .export_dialog import ExportDialog
 
 from ..core import (
     JobManager, Translator, GlossaryProcessor,
-    Crawler, EPUBExtractor, Exporter,
+    EPUBExtractor, Exporter,
     Job, JobType, JobStatus, ProcessingOptions,
     ImportManager, get_logger
 )
 
 # New crawler wrappers
-from ..core.sage_crawler_wrapper import SageCrawlerWrapper
 from ..core.lightnovel_crawler_wrapper import (
     LightNovelCrawlerWrapper,
     LIGHTNOVEL_CRAWLER_AVAILABLE
@@ -47,22 +49,24 @@ class MainWindow(QMainWindow):
         self.job_manager = JobManager(self)
         self.translator = Translator()
         self.glossary = GlossaryProcessor()
-        self.crawler = Crawler()  # Keep for compatibility
         self.epub_extractor = EPUBExtractor()
         self.exporter = Exporter()
         self.import_manager = ImportManager()
         self.logger = get_logger()
 
-        # New crawler wrappers
-        self.sage_crawler = SageCrawlerWrapper()
+        # Initialize lightnovel-crawler (required)
         self.lightnovel_crawler = None
-
-        # Try to initialize lightnovel-crawler if available
         if LIGHTNOVEL_CRAWLER_AVAILABLE:
             try:
                 self.lightnovel_crawler = LightNovelCrawlerWrapper()
             except ImportError:
-                pass  # User hasn't installed it, that's okay
+                self.lightnovel_crawler = None
+        if self.lightnovel_crawler is None:
+            QMessageBox.critical(
+                self,
+                "LightNovel-Crawler Missing",
+                "lightnovel-crawler is required. Please install it via pip:\n\n    pip install lightnovel-crawler"
+            )
 
         # Processing options
         self.processing_options = ProcessingOptions()
@@ -147,10 +151,17 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
-        # Edit menu
+        # Edit menu (placeholder)
         edit_menu = menubar.addMenu("&Edit")
 
         clear_action = QAction("&Clear All Jobs", self)
+
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+
+        supported_sites_action = QAction("&View Supported Sites...", self)
+        supported_sites_action.triggered.connect(self._on_supported_sites)
+        help_menu.addAction(supported_sites_action)
         clear_action.triggered.connect(self._on_clear_jobs)
         edit_menu.addAction(clear_action)
 
@@ -243,8 +254,7 @@ class MainWindow(QMainWindow):
         # Stop all jobs
         self.job_manager.stop_all_jobs()
 
-        # Cleanup crawler
-        self.crawler.cleanup()
+        # No legacy crawler to clean up
 
         event.accept()
 
@@ -340,31 +350,214 @@ class MainWindow(QMainWindow):
         Get the currently selected crawler instance.
 
         Returns:
-            CrawlerInterface: Either SageCrawler or LightNovelCrawler
+            CrawlerInterface: LightNovelCrawler
         """
-        # For now, prefer lightnovel-crawler if available, else use SageCrawler
-        # Later we can add UI selection
-        crawler_pref = self.settings.value("preferred_crawler", "lightnovel")
+        if not self.lightnovel_crawler:
+            raise RuntimeError("lightnovel-crawler is not available")
+        return self.lightnovel_crawler
 
-        if crawler_pref == "lightnovel" and self.lightnovel_crawler:
-            return self.lightnovel_crawler
-        else:
-            return self.sage_crawler
+    def _on_supported_sites(self):
+        """Show a dialog listing supported sites from lightnovel-crawler."""
+        try:
+            crawler = self.get_selected_crawler()
+        except Exception:
+            QMessageBox.critical(
+                self,
+                "Crawler Missing",
+                "lightnovel-crawler is required. Please install it via pip:\n\n    pip install lightnovel-crawler",
+            )
+            return
+
+        sites = crawler.get_supported_sites() if crawler else []
+        if not sites:
+            QMessageBox.information(
+                self,
+                "Supported Sites",
+                "No sites available. Ensure lightnovel-crawler is installed.",
+            )
+            return
+
+        # Build text listing
+        text = "\n".join(sites[:300])  # cap to first ~300 entries for dialog
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Supported Sites (lightnovel-crawler)")
+        dlg.resize(600, 500)
+        editor = QTextEdit(dlg)
+        editor.setReadOnly(True)
+        editor.setPlainText(text)
+
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(editor)
+        dlg.setLayout(layout)
+        dlg.exec()
 
     def _on_fetch_url(self, url: str):
-        """Handle fetch URL"""
+        """Handle fetch URL or novel name"""
+        # Get selected crawler
+        selected_crawler = self.get_selected_crawler()
+        
+        # Check if input is a URL or novel name
+        if selected_crawler.is_url(url):
+            # It's a URL - proceed with direct crawl
+            self._crawl_url(url, selected_crawler)
+        else:
+            # It's a novel name - show search results
+            self._search_and_crawl_novel(url, selected_crawler)
+
+    def _search_and_crawl_novel(self, novel_name: str, selected_crawler):
+        """Search for novel by name and let user select"""
+        import asyncio
+        
+        self.logger.info(
+            f"Searching for novel: {novel_name}",
+            stage="crawl_search"
+        )
+        
+        # Create and show search progress dialog (non-modal)
+        search_dialog = SearchProgressDialog(f"Searching for: {novel_name}", self)
+        search_dialog.show()
+        
+        # Search results storage
+        search_results = {'results': None, 'error': None}
+        
+        # Search in background thread
+        def search_processor(job, progress_cb, log_cb):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                # Define progress callback
+                def progress_wrapper(current, total, message):
+                    if total > 0:
+                        progress = (current / total) * 100
+                        progress_cb(progress)
+                    log_cb("info", message)
+                
+                # Run search
+                results = loop.run_until_complete(
+                    selected_crawler.search_novel_by_name(novel_name, progress_wrapper)
+                )
+                
+                # Store results in job for retrieval
+                job.metadata['search_results'] = results
+                job.metadata['search_query'] = novel_name
+                
+                msg = f"Found {len(results)} results"
+                log_cb("info", msg)
+                search_results['results'] = results
+            except Exception as e:
+                err_msg = f"Search failed: {str(e)}"
+                log_cb("error", err_msg)
+                job.error = str(e)
+                search_results['error'] = str(e)
+            finally:
+                loop.close()
+        
+        # Create temporary search job
+        job_id = self.job_manager.create_job(
+            JobType.CRAWL_URL,
+            f"Search: {novel_name}"
+        )
+        
+        # Connect job manager's log signal to update search dialog
+        def on_search_log(timestamp, log_job_id, level, message):
+            if log_job_id == job_id:
+                search_dialog.add_log_line(message, level=level)
+        
+        self.job_manager.log_emitted.connect(on_search_log)
+        
+        # Store context for later
+        self._pending_search = {
+            'results': search_results,
+            'crawler': selected_crawler,
+            'novel_name': novel_name,
+            'job_id': job_id,
+            'search_dialog': search_dialog,
+            'log_handler': on_search_log
+        }
+        
+        # Connect to job completion to handle results
+        def on_job_completed(completed_job_id):
+            if completed_job_id != job_id:
+                return
+            
+            # Check if job is completed
+            job = self.job_manager.get_job(completed_job_id)
+            if not job or job.status != JobStatus.COMPLETED:
+                return
+            
+            # Disconnect after handling
+            try:
+                self.job_manager.job_updated.disconnect(on_job_completed)
+                self.job_manager.log_emitted.disconnect(on_search_log)
+            except:
+                pass
+            
+            # Close search dialog and show results
+            search_dialog.close()
+            self._on_search_completed()
+        
+        # Connect signal
+        self.job_manager.job_updated.connect(on_job_completed)
+        
+        # Start search
+        self.job_manager.start_job(job_id, search_processor)
+
+    def _on_search_completed(self):
+        """Handle search completion"""
+        if not hasattr(self, '_pending_search'):
+            return
+        
+        ctx = self._pending_search
+        search_results = ctx['results']
+        
+        # Check for errors
+        if search_results['error']:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Search Error",
+                f"Search failed:\n{search_results['error']}"
+            )
+            del self._pending_search
+            return
+        
+        results = search_results['results']
+        if not results:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "No Results",
+                f"No novels found matching '{ctx['novel_name']}'"
+            )
+            del self._pending_search
+            return
+        
+        # Show search results dialog
+        dialog = SearchResultsDialog(results, self)
+        if dialog.exec():
+            selected = dialog.get_selected_result()
+            if selected:
+                # Crawl the selected URL
+                self._crawl_url(selected['url'], ctx['crawler'], selected['title'])
+        
+        del self._pending_search
+
+    def _crawl_url(self, url: str, selected_crawler, novel_title: str = None):
+        """Crawl a novel from a direct URL"""
         # Show crawl options dialog
+        from sagemtl_desktop.ui.dialogs import CrawlOptionsDialog
         dialog = CrawlOptionsDialog(url, self)
         if dialog.exec():
             options = dialog.get_options()
+            if not options.get('novel_name') and novel_title:
+                options['novel_name'] = novel_title
 
             self.logger.info(
                 f"Starting crawl from URL: {options['url']}",
                 stage="crawl",
                 url=options['url'],
-                novel_name=options.get('novel_name'),
-                start_chapter=options.get('start_chapter'),
-                end_chapter=options.get('end_chapter')
+                novel_name=options.get('novel_name')
             )
 
             # Create crawl job
@@ -374,8 +567,15 @@ class MainWindow(QMainWindow):
                 **options
             )
 
-            # Get selected crawler
-            selected_crawler = self.get_selected_crawler()
+            # Create and show download progress dialog (non-modal)
+            download_dialog = DownloadProgressDialog(
+                f"Downloading: {options.get('novel_name', url)}", 
+                self
+            )
+            download_dialog.show()
+            
+            # Track chapter rendering for status updates
+            rendering_state = {'chapters_rendered': 0, 'total_chapters': 0}
 
             # Start crawl worker with async support
             def crawl_processor(job, progress_cb, log_cb):
@@ -398,13 +598,25 @@ class MainWindow(QMainWindow):
                     )
 
                     # Convert chapters to text format
-                    log_cb("info", f"Processing {len(novel_data.chapters)} chapters...")
+                    msg = f"Processing {len(novel_data.chapters)} chapters..."
+                    log_cb("info", msg)
+                    
+                    rendering_state['total_chapters'] = len(novel_data.chapters)
 
                     full_text_parts = []
+                    chapters_rendered = 0
                     for chapter in novel_data.chapters:
                         full_text_parts.append(f"=== {chapter.title} ===\n\n")
                         full_text_parts.append(chapter.content)
                         full_text_parts.append("\n\n")
+                        chapters_rendered += 1
+                        rendering_state['chapters_rendered'] = chapters_rendered
+                        
+                        # Update preview panel every 5 chapters or on last chapter
+                        if chapters_rendered % 5 == 0 or chapters_rendered == len(novel_data.chapters):
+                            preview_text = "".join(full_text_parts)
+                            # Emit signal to update UI (we'll do this via callback)
+                            log_cb("preview_update", preview_text)
 
                     full_text = "".join(full_text_parts)
 
@@ -414,7 +626,8 @@ class MainWindow(QMainWindow):
                     job.metadata['novel_title'] = novel_data.title
                     job.metadata['author'] = novel_data.author
 
-                    log_cb("info", f"Crawl completed: {len(novel_data.chapters)} chapters")
+                    msg = f"Crawl completed: {len(novel_data.chapters)} chapters"
+                    log_cb("info", msg)
 
                     # Log successful crawl
                     self.logger.info(
@@ -424,9 +637,47 @@ class MainWindow(QMainWindow):
                         chapter_count=len(novel_data.chapters),
                         content_length=len(full_text)
                     )
+                except Exception as e:
+                    err_msg = f"Crawl failed: {str(e)}"
+                    log_cb("error", err_msg)
                 finally:
                     loop.close()
 
+            # Connect job manager's log signal to update download dialog
+            def on_download_log(timestamp, log_job_id, level, message):
+                if log_job_id == job_id:
+                    download_dialog.add_log_line(message, level=level)
+                    # Update status based on rendering progress
+                    if rendering_state['total_chapters'] > 0:
+                        status_msg = f"Processing: {rendering_state['chapters_rendered']}/{rendering_state['total_chapters']} chapters"
+                        download_dialog.set_status(status_msg)
+            
+            self.job_manager.log_emitted.connect(on_download_log)
+
+            # Connect to job completion to close download dialog
+            def on_download_completed(completed_job_id):
+                if completed_job_id != job_id:
+                    return
+                
+                # Check if job is completed
+                job = self.job_manager.get_job(completed_job_id)
+                if not job or job.status != JobStatus.COMPLETED:
+                    return
+                
+                try:
+                    self.job_manager.job_updated.disconnect(on_download_completed)
+                    self.job_manager.log_emitted.disconnect(on_download_log)
+                except:
+                    pass
+                
+                # Update final status
+                if rendering_state['total_chapters'] > 0:
+                    download_dialog.set_status(f"Completed: {rendering_state['total_chapters']} chapters downloaded")
+                
+                # Close download dialog
+                download_dialog.close()
+            
+            self.job_manager.job_updated.connect(on_download_completed)
             self.job_manager.start_job(job_id, crawl_processor)
 
     def _on_load_glossary(self, path: str):
@@ -695,7 +946,13 @@ class MainWindow(QMainWindow):
 
     def _on_log(self, timestamp: str, job_id: str, level: str, message: str):
         """Handle log message"""
-        self.log_panel.add_log(timestamp, job_id, level, message)
+        # Handle special preview_update log level
+        if level == "preview_update":
+            # Update preview panel with live content
+            self.preview_panel.set_original_text(message)
+        else:
+            # Normal log message
+            self.log_panel.add_log(timestamp, job_id, level, message)
 
     def _on_clear_jobs(self):
         """Handle clear all jobs"""
