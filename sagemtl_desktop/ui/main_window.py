@@ -16,7 +16,7 @@ from .controls_panel import ControlsPanel
 from .log_panel import LogPanel
 from .dialogs import (
     ErrorDialog, CrawlOptionsDialog, AboutDialog, SearchResultsDialog,
-    SearchProgressDialog, DownloadProgressDialog
+    SearchProgressDialog, DownloadProgressDialog, ChapterSelectionDialog
 )
 from .export_dialog import ExportDialog
 
@@ -26,6 +26,7 @@ from ..core import (
     Job, JobType, JobStatus, ProcessingOptions,
     ImportManager, get_logger
 )
+from ..core.novel_library import NovelLibrary
 
 # New crawler wrappers
 from ..core.lightnovel_crawler_wrapper import (
@@ -53,6 +54,9 @@ class MainWindow(QMainWindow):
         self.exporter = Exporter()
         self.import_manager = ImportManager()
         self.logger = get_logger()
+        
+        # Novel library for persistent storage
+        self.novel_library = NovelLibrary()
 
         # Initialize lightnovel-crawler (required)
         self.lightnovel_crawler = None
@@ -186,6 +190,11 @@ class MainWindow(QMainWindow):
         # File list panel
         self.file_list_panel.job_selected.connect(self._on_job_selected)
         self.file_list_panel.job_double_clicked.connect(self._on_job_double_clicked)
+        
+        # Novel library selections
+        self.file_list_panel.novel_selected.connect(self._on_novel_selected)
+        self.file_list_panel.chapter_selected.connect(self._on_chapter_selected)
+        self.file_list_panel.novel_delete_requested.connect(self._on_novel_delete)
 
         # Job manager
         self.job_manager.job_added.connect(self._on_job_added)
@@ -236,6 +245,14 @@ class MainWindow(QMainWindow):
                 self.processing_options.glossary_path = glossary_path
             except Exception as e:
                 print(f"Failed to load saved glossary: {e}")
+
+        # Load saved novels from library
+        self._refresh_novel_library()
+
+    def _refresh_novel_library(self):
+        """Refresh the novel library display in the file list panel"""
+        novels = self.novel_library.get_all_novels()
+        self.file_list_panel.load_novels(novels)
 
     def _save_settings(self):
         """Save settings"""
@@ -544,7 +561,7 @@ class MainWindow(QMainWindow):
         del self._pending_search
 
     def _crawl_url(self, url: str, selected_crawler, novel_title: str = None):
-        """Crawl a novel from a direct URL"""
+        """Crawl a novel from a direct URL - two phase: discover then download"""
         # Show crawl options dialog
         from sagemtl_desktop.ui.dialogs import CrawlOptionsDialog
         dialog = CrawlOptionsDialog(url, self)
@@ -554,131 +571,240 @@ class MainWindow(QMainWindow):
                 options['novel_name'] = novel_title
 
             self.logger.info(
-                f"Starting crawl from URL: {options['url']}",
+                f"Starting chapter discovery from URL: {options['url']}",
                 stage="crawl",
                 url=options['url'],
                 novel_name=options.get('novel_name')
             )
 
-            # Create crawl job
-            job_id = self.job_manager.create_job(
-                JobType.CRAWL_URL,
-                options.get('novel_name') or url,
-                **options
-            )
-
-            # Create and show download progress dialog (non-modal)
-            download_dialog = DownloadProgressDialog(
-                f"Downloading: {options.get('novel_name', url)}", 
+            # Phase 1: Discover chapters first
+            # Show a discovery progress dialog
+            discovery_dialog = DownloadProgressDialog(
+                f"Discovering chapters: {options.get('novel_name', url)}", 
                 self
             )
-            download_dialog.show()
+            discovery_dialog.show()
             
-            # Track chapter rendering for status updates
-            rendering_state = {'chapters_rendered': 0, 'total_chapters': 0}
-
-            # Start crawl worker with async support
-            def crawl_processor(job, progress_cb, log_cb):
-                import asyncio
-
-                # Define progress callback wrapper
-                def progress_wrapper(current, total, message):
-                    if total > 0:
-                        progress = (current / total) * 100
-                        progress_cb(progress)
-                    log_cb("info", message)
-
-                # Run async crawler in event loop
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    # Crawl with selected crawler
-                    novel_data = loop.run_until_complete(
-                        selected_crawler.fetch_novel(url, progress_wrapper)
-                    )
-
-                    # Convert chapters to text format
-                    msg = f"Processing {len(novel_data.chapters)} chapters..."
-                    log_cb("info", msg)
-                    
-                    rendering_state['total_chapters'] = len(novel_data.chapters)
-
-                    full_text_parts = []
-                    chapters_rendered = 0
-                    for chapter in novel_data.chapters:
-                        full_text_parts.append(f"=== {chapter.title} ===\n\n")
-                        full_text_parts.append(chapter.content)
-                        full_text_parts.append("\n\n")
-                        chapters_rendered += 1
-                        rendering_state['chapters_rendered'] = chapters_rendered
+            # Use QThread for discovery to keep UI responsive
+            from PySide6.QtCore import QThread, Signal as QtSignal
+            
+            class DiscoveryWorker(QThread):
+                finished = QtSignal(str, str, list)  # title, author, chapters
+                error = QtSignal(str)
+                progress = QtSignal(str)
+                
+                def __init__(self, url):
+                    super().__init__()
+                    self.url = url
+                
+                def run(self):
+                    try:
+                        # Always use GenericNovelCrawler for discovery (just finds links, doesn't download)
+                        from sagemtl_desktop.core.generic_crawler import GenericNovelCrawler
                         
-                        # Update preview panel every 5 chapters or on last chapter
-                        if chapters_rendered % 5 == 0 or chapters_rendered == len(novel_data.chapters):
-                            preview_text = "".join(full_text_parts)
-                            # Emit signal to update UI (we'll do this via callback)
-                            log_cb("preview_update", preview_text)
-
-                    full_text = "".join(full_text_parts)
-
-                    # Store in job
-                    job.original_text = full_text
-                    job.metadata['chapter_count'] = len(novel_data.chapters)
-                    job.metadata['novel_title'] = novel_data.title
-                    job.metadata['author'] = novel_data.author
-
-                    msg = f"Crawl completed: {len(novel_data.chapters)} chapters"
-                    log_cb("info", msg)
-
-                    # Log successful crawl
-                    self.logger.info(
-                        f"Crawl completed: {novel_data.title}",
-                        stage="crawl",
-                        job_id=job_id,
-                        chapter_count=len(novel_data.chapters),
-                        content_length=len(full_text)
-                    )
-                except Exception as e:
-                    err_msg = f"Crawl failed: {str(e)}"
-                    log_cb("error", err_msg)
-                finally:
-                    loop.close()
-
-            # Connect job manager's log signal to update download dialog
-            def on_download_log(timestamp, log_job_id, level, message):
-                if log_job_id == job_id:
-                    download_dialog.add_log_line(message, level=level)
-                    # Update status based on rendering progress
-                    if rendering_state['total_chapters'] > 0:
-                        status_msg = f"Processing: {rendering_state['chapters_rendered']}/{rendering_state['total_chapters']} chapters"
-                        download_dialog.set_status(status_msg)
+                        def progress_cb(current, total, message):
+                            self.progress.emit(message)
+                        
+                        crawler = GenericNovelCrawler(self.url)
+                        try:
+                            title, author, chapters = crawler.discover_chapters(progress_cb)
+                            self.finished.emit(title, author or "Unknown", chapters)
+                        finally:
+                            crawler.close()
+                    except Exception as e:
+                        self.error.emit(str(e))
             
-            self.job_manager.log_emitted.connect(on_download_log)
+            # Store state for the callback
+            discovery_state = {'worker': None, 'chapters': [], 'title': '', 'author': ''}
+            
+            def on_discovery_progress(message):
+                discovery_dialog.add_log_line(message)
+            
+            def on_discovery_error(error_msg):
+                discovery_dialog.add_log_line(f"Error: {error_msg}", level="error")
+                discovery_dialog.set_status("Discovery failed")
+                QMessageBox.critical(self, "Discovery Failed", f"Failed to discover chapters:\n\n{error_msg}")
+                discovery_dialog.close()
+            
+            def on_discovery_complete(title, author, chapters):
+                discovery_dialog.close()
+                
+                if not chapters:
+                    QMessageBox.warning(self, "No Chapters Found", 
+                        "No chapters were found at this URL.\n\nThe site may have an unusual structure or may be blocking automated access.")
+                    return
+                
+                # Store for later
+                discovery_state['title'] = title
+                discovery_state['author'] = author
+                discovery_state['chapters'] = chapters
+                
+                # Phase 2: Show chapter selection dialog
+                selection_dialog = ChapterSelectionDialog(title, chapters, self)
+                if selection_dialog.exec():
+                    selected_chapters = selection_dialog.get_selected_chapters()
+                    if selected_chapters:
+                        # Proceed with download
+                        self._download_selected_chapters(
+                            url, title, author, 
+                            selected_chapters, options
+                        )
+            
+            # Start discovery worker
+            worker = DiscoveryWorker(url)
+            discovery_state['worker'] = worker
+            worker.progress.connect(on_discovery_progress)
+            worker.error.connect(on_discovery_error)
+            worker.finished.connect(on_discovery_complete)
+            worker.start()
 
-            # Connect to job completion to close download dialog
-            def on_download_completed(completed_job_id):
-                if completed_job_id != job_id:
-                    return
+    def _download_selected_chapters(self, url: str, title: str, author: str, 
+                                    selected_chapters: list, options: dict):
+        """Download the selected chapters after user confirmation"""
+        self.logger.info(
+            f"Starting download of {len(selected_chapters)} chapters: {title}",
+            stage="crawl",
+            url=url
+        )
+        
+        # Create crawl job
+        job_id = self.job_manager.create_job(
+            JobType.CRAWL_URL,
+            options.get('novel_name') or title,
+            **options
+        )
+
+        # Create and show download progress dialog (non-modal)
+        download_dialog = DownloadProgressDialog(
+            f"Downloading: {title} ({len(selected_chapters)} chapters)", 
+            self
+        )
+        download_dialog.show()
+        
+        # Track chapter rendering for status updates
+        rendering_state = {'chapters_rendered': 0, 'total_chapters': len(selected_chapters)}
+
+        # Start crawl worker with async support
+        def crawl_processor(job, progress_cb, log_cb):
+            try:
+                from sagemtl_desktop.core.generic_crawler import GenericNovelCrawler
+                from sagemtl_desktop.core.crawler_interface import CrawledNovel, CrawledChapter
                 
-                # Check if job is completed
-                job = self.job_manager.get_job(completed_job_id)
-                if not job or job.status != JobStatus.COMPLETED:
-                    return
+                log_cb("info", f"Downloading {len(selected_chapters)} chapters...")
                 
+                # Create crawler for downloading content
+                crawler = GenericNovelCrawler(url)
+                
+                # Download chapters
+                chapters = []
+                for idx, (chapter_url, chapter_title) in enumerate(selected_chapters, 1):
+                    try:
+                        percent = int((idx / len(selected_chapters)) * 90)
+                        progress_cb(percent)
+                        log_cb("info", f"Downloading chapter {idx}/{len(selected_chapters)}: {chapter_title[:50]}...")
+                        
+                        # Fetch actual content from the chapter URL
+                        content = crawler._fetch_chapter_content(chapter_url)
+                        
+                        chapters.append(CrawledChapter(
+                            title=chapter_title or f"Chapter {idx}",
+                            content=content,
+                            chapter_number=idx,
+                            url=chapter_url
+                        ))
+                        
+                        rendering_state['chapters_rendered'] = idx
+                    except Exception as e:
+                        log_cb("error", f"Failed to download chapter {idx}: {e}")
+                
+                # Create novel data
+                novel_data = CrawledNovel(
+                    title=title,
+                    author=author,
+                    chapters=chapters
+                )
+                
+                # Convert chapters to text format
+                log_cb("info", f"Processing {len(chapters)} chapters...")
+                
+                full_text_parts = []
+                for chapter in chapters:
+                    full_text_parts.append(f"=== {chapter.title} ===\n\n")
+                    full_text_parts.append(chapter.content)
+                    full_text_parts.append("\n\n")
+                
+                full_text = "".join(full_text_parts)
+
+                # Store in job
+                job.original_text = full_text
+                job.metadata['chapter_count'] = len(chapters)
+                job.metadata['novel_title'] = title
+                job.metadata['author'] = author
+
+                log_cb("info", f"Crawl completed: {len(chapters)} chapters")
+
+                # Save novel to persistent library
+                saved_novel = self.novel_library.add_novel_from_crawled(novel_data, url)
+                log_cb("info", f"Novel saved to library: {saved_novel.title}")
+
+                # Log successful crawl
+                self.logger.info(
+                    f"Crawl completed: {title}",
+                    stage="crawl",
+                    job_id=job_id,
+                    chapter_count=len(chapters),
+                    content_length=len(full_text)
+                )
+                
+                # Close crawler
+                crawler.close()
+            except Exception as e:
+                err_msg = f"Crawl failed: {str(e)}"
+                log_cb("error", err_msg)
                 try:
-                    self.job_manager.job_updated.disconnect(on_download_completed)
-                    self.job_manager.log_emitted.disconnect(on_download_log)
+                    crawler.close()
                 except:
                     pass
-                
-                # Update final status
+
+        # Connect job manager's log signal to update download dialog
+        def on_download_log(timestamp, log_job_id, level, message):
+            if log_job_id == job_id:
+                download_dialog.add_log_line(message, level=level)
+                # Update status based on rendering progress
                 if rendering_state['total_chapters'] > 0:
-                    download_dialog.set_status(f"Completed: {rendering_state['total_chapters']} chapters downloaded")
-                
-                # Close download dialog
-                download_dialog.close()
+                    status_msg = f"Downloading: {rendering_state['chapters_rendered']}/{rendering_state['total_chapters']} chapters"
+                    download_dialog.set_status(status_msg)
+        
+        self.job_manager.log_emitted.connect(on_download_log)
+
+        # Connect to job completion to close download dialog
+        def on_download_completed(completed_job_id):
+            if completed_job_id != job_id:
+                return
             
-            self.job_manager.job_updated.connect(on_download_completed)
-            self.job_manager.start_job(job_id, crawl_processor)
+            # Check if job is completed
+            job = self.job_manager.get_job(completed_job_id)
+            if not job or job.status != JobStatus.COMPLETED:
+                return
+            
+            try:
+                self.job_manager.job_updated.disconnect(on_download_completed)
+                self.job_manager.log_emitted.disconnect(on_download_log)
+            except:
+                pass
+            
+            # Update final status
+            if rendering_state['total_chapters'] > 0:
+                download_dialog.set_status(f"Completed: {rendering_state['total_chapters']} chapters downloaded")
+            
+            # Refresh novel library in UI
+            self._refresh_novel_library()
+            
+            # Close download dialog
+            download_dialog.close()
+        
+        self.job_manager.job_updated.connect(on_download_completed)
+        self.job_manager.start_job(job_id, crawl_processor)
 
     def _on_load_glossary(self, path: str):
         """Handle load glossary"""
@@ -916,6 +1042,59 @@ class MainWindow(QMainWindow):
                 f"User viewed error details for job: {job.name}",
                 job_id=job_id,
                 stage="ui"
+            )
+
+    def _on_novel_selected(self, novel_id: str):
+        """Handle novel folder selection - show novel info in preview"""
+        novel = self.novel_library.get_novel(novel_id)
+        if novel:
+            # Show novel summary in preview
+            info_text = f"📖 {novel.title}\n"
+            if novel.author:
+                info_text += f"✍️ Author: {novel.author}\n"
+            info_text += f"📚 Chapters: {len(novel.chapters)}\n"
+            info_text += f"🔗 Source: {novel.source_url}\n\n"
+            info_text += "Double-click a chapter to view its content."
+            
+            self.preview_panel.set_original_text(info_text)
+            self.preview_panel.set_cleaned_text("")
+
+    def _on_chapter_selected(self, novel_id: str, chapter_id: str):
+        """Handle chapter selection - show chapter content in preview"""
+        novel = self.novel_library.get_novel(novel_id)
+        if novel:
+            for chapter in novel.chapters:
+                if chapter.chapter_id == chapter_id:
+                    # Show chapter content
+                    original = chapter.content or ""
+                    cleaned = chapter.cleaned_content or chapter.content or ""
+                    translated = chapter.translated_content or ""
+                    
+                    self.preview_panel.set_original_text(f"📄 {chapter.title}\n\n{original}")
+                    if translated:
+                        self.preview_panel.set_cleaned_text(f"🌐 Translated:\n\n{translated}")
+                    elif cleaned:
+                        self.preview_panel.set_cleaned_text(f"✨ Cleaned:\n\n{cleaned}")
+                    break
+
+    def _on_novel_delete(self, novel_id: str):
+        """Handle novel deletion request"""
+        novel = self.novel_library.get_novel(novel_id)
+        if novel:
+            # Remove from library
+            self.novel_library.remove_novel(novel_id)
+            
+            # Remove from UI
+            self.file_list_panel.remove_novel(novel_id)
+            
+            # Clear preview if it was showing this novel
+            self.preview_panel.set_original_text("")
+            self.preview_panel.set_cleaned_text("")
+            
+            # Log the deletion
+            self.log_panel.add_log(
+                "system", "system", "info",
+                f"Deleted novel: {novel.title}"
             )
 
     def _on_job_added(self, job_id: str):
