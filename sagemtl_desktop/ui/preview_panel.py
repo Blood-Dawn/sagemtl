@@ -1,64 +1,88 @@
 """
-Side-by-side text preview panel.
+Side-by-side text preview panel with glossary integration.
 """
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
-    QLabel, QSplitter
+    QLabel, QSplitter, QMenu
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QAction
+
+
+class GlossaryTextEdit(QTextEdit):
+    """Text edit with context menu for glossary operations"""
+    
+    add_to_glossary = Signal(str)  # Selected text
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
+    
+    def _show_context_menu(self, pos):
+        """Show context menu with glossary option"""
+        menu = self.createStandardContextMenu()
+        
+        selected = self.textCursor().selectedText()
+        if selected and len(selected.strip()) > 0:
+            menu.addSeparator()
+            
+            glossary_action = QAction(f"📋 Add to Glossary: \"{selected[:30]}...\"" if len(selected) > 30 else f"📋 Add to Glossary: \"{selected}\"", self)
+            glossary_action.triggered.connect(lambda: self.add_to_glossary.emit(selected))
+            menu.addAction(glossary_action)
+        
+        menu.exec_(self.mapToGlobal(pos))
 
 
 class PreviewPanel(QWidget):
     """Widget displaying original and cleaned text side-by-side"""
+    
+    # Signal emitted when user wants to add selected text to glossary
+    add_to_glossary_requested = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._init_ui()
 
+    def _create_text_panel(self, label_text: str, placeholder: str) -> tuple[QWidget, 'GlossaryTextEdit']:
+        """Create a panel with label and text edit."""
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setSpacing(2)
+
+        label = QLabel(label_text)
+        label.setStyleSheet("font-weight: bold; color: #888; padding: 4px;")
+        layout.addWidget(label)
+
+        text_edit = GlossaryTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setPlaceholderText(placeholder)
+        text_edit.add_to_glossary.connect(self.add_to_glossary_requested.emit)
+        layout.addWidget(text_edit)
+
+        return container, text_edit
+
     def _init_ui(self):
         """Initialize UI"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-
-        # Header
-        header = QLabel("Preview")
-        header.setStyleSheet("font-weight: bold; font-size: 14px; padding: 8px;")
-        layout.addWidget(header)
+        layout.setSpacing(0)
 
         # Splitter for side-by-side views
         splitter = QSplitter(Qt.Horizontal)
 
         # Left panel - Original text
-        left_container = QWidget()
-        left_layout = QVBoxLayout(left_container)
-        left_layout.setContentsMargins(4, 4, 4, 4)
-
-        left_label = QLabel("Original Text")
-        left_label.setStyleSheet("font-weight: bold; color: #666;")
-        left_layout.addWidget(left_label)
-
-        self.original_text = QTextEdit()
-        self.original_text.setReadOnly(True)
-        self.original_text.setPlaceholderText("Original text will appear here...")
-        left_layout.addWidget(self.original_text)
-
+        left_container, self.original_text = self._create_text_panel(
+            "Original Text", "Original text will appear here..."
+        )
         splitter.addWidget(left_container)
 
         # Right panel - Cleaned/Translated text
-        right_container = QWidget()
-        right_layout = QVBoxLayout(right_container)
-        right_layout.setContentsMargins(4, 4, 4, 4)
-
-        right_label = QLabel("Cleaned/Translated Text")
-        right_label.setStyleSheet("font-weight: bold; color: #666;")
-        right_layout.addWidget(right_label)
-
-        self.cleaned_text = QTextEdit()
-        self.cleaned_text.setReadOnly(True)
-        self.cleaned_text.setPlaceholderText("Cleaned text will appear here...")
-        right_layout.addWidget(self.cleaned_text)
-
+        right_container, self.cleaned_text = self._create_text_panel(
+            "Cleaned/Translated Text", "Cleaned text will appear here..."
+        )
         splitter.addWidget(right_container)
 
         # Equal split

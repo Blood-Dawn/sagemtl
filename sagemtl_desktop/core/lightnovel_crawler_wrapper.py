@@ -16,6 +16,8 @@ from sagemtl_desktop.core.crawler_interface import (
     CrawledNovel,
     CrawledChapter
 )
+from sagemtl_desktop.core.supported_sites import get_supported_sites_formatted
+from sagemtl_desktop.core.generic_crawler import GenericNovelCrawler
 
 # Try to import lightnovel-crawler, but don't fail if it's not installed
 # This allows your app to work even if users haven't installed the optional dependency
@@ -70,33 +72,80 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
 
     async def fetch_novel(self, url: str, progress_callback=None, max_chapters: int = None) -> CrawledNovel:
         """
-        Use lightnovel-crawler to fetch the novel.
+        Use lightnovel-crawler to fetch the novel, with generic crawler fallback.
 
         This method integrates with lncrawl's API to download novels.
-        It uses JSON format for easy parsing of structured chapter data.
+        If the site is not supported by lncrawl, it falls back to the generic crawler.
         
         Args:
             url: Novel URL to download
             progress_callback: Optional callback for progress updates
             max_chapters: Optional limit on number of chapters to download (for testing)
         """
-        # Create a temporary directory for this crawl operation
-        self.temp_dir = tempfile.mkdtemp(prefix='sagemtl_lncrawl_')
-
+        # Try lightnovel-crawler first
         try:
+            # Create a temporary directory for this crawl operation
+            self.temp_dir = tempfile.mkdtemp(prefix='sagemtl_lncrawl_')
+
             # Run the crawler in a thread pool to avoid blocking your UI
-            novel = await asyncio.get_event_loop().run_in_executor(
+            return await asyncio.get_event_loop().run_in_executor(
                 None,
                 self._run_crawler_sync,
                 url,
                 progress_callback,
                 max_chapters
             )
-            return novel
+        except RuntimeError as e:
+            error_msg = str(e)
+            
+            # Check if it's not an unsupported site error - re-raise other errors
+            if "not supported" not in error_msg.lower() and "no results" not in error_msg.lower():
+                raise
+            
+            if progress_callback:
+                progress_callback(0, 100, "Site not in lncrawl database. Trying generic crawler...")
+            
+            # Fall back to generic crawler
+            return await self._fetch_with_generic_crawler(url, progress_callback, max_chapters)
+        except Exception as e:
+            # For unexpected errors, try generic crawler as last resort
+            if progress_callback:
+                progress_callback(0, 100, f"lncrawl failed ({str(e)}). Trying generic crawler...")
+            
+            return await self._fetch_with_generic_crawler(url, progress_callback, max_chapters)
         finally:
             # Clean up temporary files
             if self.temp_dir and Path(self.temp_dir).exists():
                 shutil.rmtree(self.temp_dir)
+    
+    async def _fetch_with_generic_crawler(self, url: str, progress_callback, max_chapters: int = None) -> CrawledNovel:
+        """
+        Fetch novel using the generic web crawler.
+        
+        Args:
+            url: Novel URL to download
+            progress_callback: Optional callback for progress updates
+            max_chapters: Optional limit on number of chapters
+            
+        Returns:
+            CrawledNovel from generic crawler
+        """
+        try:
+            # Run generic crawler in executor to avoid blocking
+            def run_generic():
+                crawler = GenericNovelCrawler(url)
+                try:
+                    return crawler.fetch_novel(progress_callback, max_chapters)
+                finally:
+                    crawler.close()
+            
+            novel = await asyncio.get_event_loop().run_in_executor(None, run_generic)
+            return novel
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to crawl novel with generic crawler: {str(e)}\n\n"
+                "The site may have unusual structure or may be blocking automated access."
+            )
 
     async def search_novel_by_name(self, novel_name: str, progress_callback=None) -> List[Dict[str, Any]]:
         """
@@ -111,13 +160,12 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         across multiple sites.
         """
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
+            return await asyncio.get_event_loop().run_in_executor(
                 None,
                 self._search_novel_sync,
                 novel_name,
                 progress_callback
             )
-            return result
         except Exception as e:
             if LNException and isinstance(e, LNException):
                 raise RuntimeError(
@@ -133,7 +181,7 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         import sys
         
         if progress_callback:
-            progress_callback(0, 100, f"Loading sources...")
+            progress_callback(0, 100, "Loading sources...")
 
         try:
             # Temporarily override sys.argv to avoid argparse conflicts with pytest
@@ -171,6 +219,11 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             if progress_callback:
                 progress_callback(90, 100, "Processing results...")
 
+            # Debug: log what we got back
+            if hasattr(app, 'search_results'):
+                if progress_callback:
+                    progress_callback(92, 100, f"Raw results count: {len(app.search_results) if app.search_results else 0}")
+            
             # Extract search results
             # search_results should be a list of Result objects with .novel and .origin attributes
             results = []
@@ -258,12 +311,23 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             # Prepare and search for appropriate crawler/site adapter
             app.prepare_search()
             app.search_novel()
+            
+            # Check if search found any results
+            if not hasattr(app, 'crawler') or not app.crawler:
+                raise RuntimeError(
+                    f"No results for: {url}\n\n"
+                    "This could mean:\n"
+                    "1. The site is not in lightnovel-crawler's database\n"
+                    "2. The URL format is incorrect\n"
+                    "3. The novel doesn't exist at this URL\n\n"
+                    "Falling back to generic crawler..."
+                )
 
             # Limit chapters if max_chapters is specified
-            if max_chapters is not None and hasattr(app, 'crawler') and app.crawler:
-                original_chapters = getattr(app.crawler, 'chapters', [])
+            if max_chapters is not None and (crawler := getattr(app, 'crawler', None)):
+                original_chapters = getattr(crawler, 'chapters', [])
                 if len(original_chapters) > max_chapters:
-                    app.crawler.chapters = original_chapters[:max_chapters]
+                    crawler.chapters = original_chapters[:max_chapters]
                     if progress_callback:
                         progress_callback(20, 100, f"Limited to first {max_chapters} chapters for testing")
 
@@ -431,9 +495,8 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
                             domain = home_str
 
                         # Domain match (handles subdomains)
-                        if domain:
-                            if netloc == domain or netloc.endswith('.' + domain):
-                                return True
+                        if domain and (netloc == domain or netloc.endswith('.' + domain)):
+                            return True
                         # Fallback: substring match on full URL
                         if home_str and home_str in url.lower():
                             return True
@@ -449,11 +512,13 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         """
         Return a user-friendly list of supported sites.
         
-        Format: "domain (SourceName)". The list is de-duplicated and sorted.
+        Format: "domain (SourceName)" from dynamic crawler list, or the comprehensive
+        list from supported_sites.py as fallback.
         Results are cached per instance for performance.
         """
         if not LIGHTNOVEL_CRAWLER_AVAILABLE:
-            return []
+            # If lightnovel-crawler is not available, use the comprehensive fallback
+            return get_supported_sites_formatted()
 
         # Simple per-instance cache
         cache_attr = '_supported_sites_cache'
@@ -496,12 +561,13 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             result = [f"{d} ({entries[d]})" for d in entries.keys()]
             result.sort(key=lambda s: s.lower())
 
-            # Fallback text if empty
+            # Fallback to comprehensive list if empty or use dynamic list if we got results
             if not result:
-                result = ["460+ sites supported (lightnovel-crawler)"]
+                result = get_supported_sites_formatted()
 
             # Cache and return
             setattr(self, cache_attr, result)
             return result
         except Exception:
-            return ["460+ sites supported (lightnovel-crawler)"]
+            # Use comprehensive fallback list if dynamic fetching fails
+            return get_supported_sites_formatted()

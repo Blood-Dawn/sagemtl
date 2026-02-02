@@ -15,6 +15,9 @@ PyYAML==6.0.3
 # HTTP client for SageCrawler (pinned to satisfy python-telegram-bot dependency)
 httpx==0.26.0
 
+# HTML parsing for generic web crawler
+beautifulsoup4==4.12.3
+
 # Optional: Advanced web novel crawler (GPL v3 licensed)
 # Provides support for 455+ novel sites
 lightnovel-crawler==3.10.1

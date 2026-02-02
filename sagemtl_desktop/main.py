@@ -4,11 +4,13 @@ Main entry point for SageMTL Desktop Application.
 
 import sys
 import warnings
+from pathlib import Path
 
 # Suppress deprecated pkg_resources warning from ctranslate2
 warnings.filterwarnings('ignore', message='.*pkg_resources is deprecated.*')
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 
 from .ui.main_window import MainWindow
 
@@ -23,6 +25,11 @@ def main():
     app.setApplicationName("SageMTL Desktop")
     app.setOrganizationName("SageMTL")
     app.setOrganizationDomain("sagemtl.app")
+
+    # Set application icon
+    icon_path = Path(__file__).parent / "resources" / "icon.svg"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     # Set application style
     app.setStyle("Fusion")
