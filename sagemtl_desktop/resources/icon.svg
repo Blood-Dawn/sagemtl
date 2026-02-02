@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bookGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="pageGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f8fafc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e2e8f0;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#bookGrad)" />
+  
+  <!-- Open book base -->
+  <path d="M120 160 L256 200 L392 160 L392 360 L256 400 L120 360 Z" 
+        fill="url(#pageGrad)" stroke="#4f46e5" stroke-width="4"/>
+  
+  <!-- Book spine/center -->
+  <path d="M256 200 L256 400" stroke="#4f46e5" stroke-width="3"/>
+  
+  <!-- Left page lines -->
+  <line x1="145" y1="220" x2="235" y2="240" stroke="#94a3b8" stroke-width="2"/>
+  <line x1="150" y1="250" x2="235" y2="265" stroke="#94a3b8" stroke-width="2"/>
+  <line x1="155" y1="280" x2="235" y2="290" stroke="#94a3b8" stroke-width="2"/>
+  <line x1="160" y1="310" x2="235" y2="315" stroke="#94a3b8" stroke-width="2"/>
+  
+  <!-- Right page - translation symbol (A→文) -->
+  <text x="290" y="260" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#4f46e5">A</text>
+  <text x="325" y="260" font-family="Arial, sans-serif" font-size="24" fill="#6366f1">→</text>
+  <text x="355" y="265" font-family="Arial, sans-serif" font-size="32" fill="#4f46e5">文</text>
+  
+  <!-- Sage leaf accent -->
+  <ellipse cx="256" cy="130" rx="30" ry="45" fill="#22c55e" transform="rotate(-15 256 130)"/>
+  <ellipse cx="270" cy="125" rx="25" ry="40" fill="#16a34a" transform="rotate(15 270 125)"/>
+  <path d="M256 175 L256 155 Q256 145 260 140" stroke="#15803d" stroke-width="3" fill="none"/>
+  
+  <!-- MTL badge -->
+  <circle cx="400" cy="400" r="60" fill="#1e1b4b"/>
+  <text x="400" y="410" font-family="Arial, sans-serif" font-size="28" font-weight="bold" 
+        fill="#f8fafc" text-anchor="middle">MTL</text>
+</svg>

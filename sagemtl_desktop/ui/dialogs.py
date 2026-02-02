@@ -250,7 +250,7 @@ class SearchProgressDialog(QDialog):
     def __init__(self, novel_name: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Searching for Novel")
-        self.setMinimumSize(600, 300)
+        self.setMinimumSize(650, 400)
         self.setModal(False)
         self.novel_name = novel_name
         self._init_ui()
@@ -259,25 +259,44 @@ class SearchProgressDialog(QDialog):
         """Initialize UI"""
         layout = QVBoxLayout(self)
 
-        # Title
+        # Title - dark theme
         title = QLabel(f"<b>Searching for: {self.novel_name}</b>")
-        title.setStyleSheet("font-size: 14px; margin-bottom: 10px;")
+        title.setStyleSheet("font-size: 14px; margin-bottom: 10px; color: #e0e0e0;")
         layout.addWidget(title)
 
-        # Instructions
+        # Instructions - dark theme
         info = QLabel(
             "lncrawler is searching across hundreds of novel sites...\n"
             "This may take a few minutes. Results will appear below."
         )
         info.setWordWrap(True)
-        info.setStyleSheet("color: #666; margin-bottom: 10px;")
+        info.setStyleSheet("color: #a0a0a0; margin-bottom: 10px;")
         layout.addWidget(info)
 
-        # Progress log
+        # Progress bar
+        from PySide6.QtWidgets import QProgressBar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)  # Indeterminate by default
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #3c3c3c;
+                border-radius: 3px;
+                background-color: #2d2d2d;
+                height: 20px;
+                text-align: center;
+                color: #e0e0e0;
+            }
+            QProgressBar::chunk {
+                background-color: #0078d4;
+            }
+        """)
+        layout.addWidget(self.progress_bar)
+
+        # Progress log - dark theme for readability
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setStyleSheet(
-            "background-color: #f0f0f0; font-family: monospace; font-size: 10px;"
+            "background-color: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; border: 1px solid #3c3c3c; padding: 8px;"
         )
         layout.addWidget(self.log_text)
 
@@ -286,16 +305,25 @@ class SearchProgressDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 
+    def set_progress(self, current: int, total: int):
+        """Set progress bar values"""
+        if total > 0:
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(current)
+        else:
+            self.progress_bar.setRange(0, 0)  # Indeterminate
+
     def add_log_line(self, message: str, level: str = "info"):
         """Add a line to the log"""
-        # Format message with level prefix if error
-        formatted_msg = f"[ERROR] {message}" if level == "error" else message
-        
-        current = self.log_text.toPlainText()
-        if current:
-            self.log_text.setPlainText(current + "\n" + formatted_msg)
+        # Format message with color based on level
+        if level == "error":
+            formatted_msg = f'<span style="color: #f44747;">[ERROR] {message}</span>'
+        elif level == "warning":
+            formatted_msg = f'<span style="color: #ffcc00;">{message}</span>'
         else:
-            self.log_text.setPlainText(formatted_msg)
+            formatted_msg = f'<span style="color: #d4d4d4;">{message}</span>'
+        
+        self.log_text.append(formatted_msg)
         # Scroll to bottom
         self.log_text.verticalScrollBar().setValue(
             self.log_text.verticalScrollBar().maximum()

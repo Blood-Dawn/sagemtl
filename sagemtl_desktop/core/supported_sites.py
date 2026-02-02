@@ -506,8 +506,7 @@ def get_supported_sites_formatted() -> list[str]:
     """Get supported sites formatted as a user-friendly list with language grouping."""
     result = []
     for language in sorted(SUPPORTED_SITES_BY_LANGUAGE.keys()):
-        sites = SUPPORTED_SITES_BY_LANGUAGE[language]
-        if sites:
+        if sites := SUPPORTED_SITES_BY_LANGUAGE[language]:
             # Add language header
             result.append(f"\n--- {language} ({len(sites)} sites) ---")
             # Add sorted sites for this language

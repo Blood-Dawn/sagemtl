@@ -5,7 +5,7 @@ File/Job list panel widget with novel folder support.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QListWidget, QListWidgetItem,
     QLabel, QPushButton, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
-    QSplitter, QFrame, QMenu, QMessageBox
+    QSplitter, QFrame, QMenu, QMessageBox, QInputDialog
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QBrush, QIcon, QFont, QAction
@@ -22,6 +22,8 @@ class FileListPanel(QWidget):
     novel_selected = Signal(str)  # novel_id
     chapter_selected = Signal(str, str)  # novel_id, chapter_id
     novel_delete_requested = Signal(str)  # novel_id
+    novel_rename_requested = Signal(str, str)  # novel_id, new_name
+    novel_export_requested = Signal(str)  # novel_id
 
     # Status icons (using Unicode symbols)
     STATUS_ICONS = {
@@ -54,13 +56,9 @@ class FileListPanel(QWidget):
         layout.setSpacing(0)
 
         # === NOVEL LIBRARY SECTION ===
-        library_frame = QFrame()
-        library_layout = QVBoxLayout(library_frame)
-        library_layout.setContentsMargins(0, 0, 0, 0)
-        
         library_header = QLabel("📚 Novel Library")
         library_header.setStyleSheet("font-weight: bold; font-size: 14px; padding: 8px; background-color: #2d2d2d;")
-        library_layout.addWidget(library_header)
+        layout.addWidget(library_header)
         
         # Tree widget for novels with chapters
         self.novel_tree = QTreeWidget()
@@ -86,44 +84,18 @@ class FileListPanel(QWidget):
                 background-color: #0d6efd;
             }
         """)
-        library_layout.addWidget(self.novel_tree)
+        layout.addWidget(self.novel_tree, stretch=1)
         
         # Novel stats
         self.novel_stats_label = QLabel("0 novels saved")
         self.novel_stats_label.setStyleSheet("padding: 4px; color: gray; font-size: 11px;")
-        library_layout.addWidget(self.novel_stats_label)
+        layout.addWidget(self.novel_stats_label)
         
-        layout.addWidget(library_frame, stretch=2)
-        
-        # === SEPARATOR ===
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setStyleSheet("background-color: #444;")
-        layout.addWidget(separator)
-        
-        # === ACTIVE JOBS SECTION ===
-        jobs_frame = QFrame()
-        jobs_layout = QVBoxLayout(jobs_frame)
-        jobs_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Header
-        header = QLabel("📁 Files & Active Jobs")
-        header.setStyleSheet("font-weight: bold; font-size: 14px; padding: 8px; background-color: #2d2d2d;")
-        jobs_layout.addWidget(header)
-
-        # List widget for active jobs
+        # Keep list_widget and stats_label for compatibility (hidden)
         self.list_widget = QListWidget()
-        self.list_widget.setAlternatingRowColors(True)
-        self.list_widget.currentItemChanged.connect(self._on_selection_changed)
-        self.list_widget.itemDoubleClicked.connect(self._on_double_clicked)
-        jobs_layout.addWidget(self.list_widget)
-
-        # Stats footer
-        self.stats_label = QLabel("0 files")
-        self.stats_label.setStyleSheet("padding: 4px; color: gray; font-size: 11px;")
-        jobs_layout.addWidget(self.stats_label)
-        
-        layout.addWidget(jobs_frame, stretch=1)
+        self.list_widget.hide()
+        self.stats_label = QLabel()
+        self.stats_label.hide()
 
     # === NOVEL LIBRARY METHODS ===
     
@@ -255,6 +227,18 @@ class FileListPanel(QWidget):
             novel_id = data['novel_id']
             novel = self._novels.get(novel_id)
             
+            # Export novel action
+            export_action = QAction("📚 Export as EPUB", self)
+            export_action.triggered.connect(lambda: self.novel_export_requested.emit(novel_id))
+            menu.addAction(export_action)
+            
+            menu.addSeparator()
+            
+            # Rename novel action
+            rename_action = QAction("✏️ Rename Novel", self)
+            rename_action.triggered.connect(lambda: self._rename_novel(novel_id))
+            menu.addAction(rename_action)
+            
             # Delete novel action
             delete_action = QAction("🗑️ Delete Novel", self)
             delete_action.triggered.connect(lambda: self._confirm_delete_novel(novel_id))
@@ -296,6 +280,33 @@ class FileListPanel(QWidget):
         
         if reply == QMessageBox.Yes:
             self.novel_delete_requested.emit(novel_id)
+
+    def _rename_novel(self, novel_id: str):
+        """Show rename dialog for a novel"""
+        novel = self._novels.get(novel_id)
+        if not novel:
+            return
+        
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename Novel",
+            "Enter new name for the novel:",
+            text=novel.title
+        )
+        
+        if ok and new_name.strip():
+            self.novel_rename_requested.emit(novel_id, new_name.strip())
+
+    def update_novel_title(self, novel_id: str, new_title: str):
+        """Update the displayed title for a novel"""
+        if novel_id in self._novels:
+            self._novels[novel_id].title = new_title
+        
+        if novel_id in self._novel_items:
+            item = self._novel_items[novel_id]
+            novel = self._novels.get(novel_id)
+            if novel:
+                item.setText(0, f"📖 {new_title} ({len(novel.chapters)} ch)")
 
     # === JOB MANAGEMENT METHODS (existing functionality) ===
 
@@ -399,9 +410,9 @@ class FileListPanel(QWidget):
     def _update_stats(self):
         """Update statistics footer"""
         total = len(self._jobs)
-        completed = sum(1 for j in self._jobs.values() if j.status == JobStatus.COMPLETED)
-        failed = sum(1 for j in self._jobs.values() if j.status == JobStatus.FAILED)
-        in_progress = sum(1 for j in self._jobs.values() if j.status == JobStatus.IN_PROGRESS)
+        completed = sum(j.status == JobStatus.COMPLETED for j in self._jobs.values())
+        failed = sum(j.status == JobStatus.FAILED for j in self._jobs.values())
+        in_progress = sum(j.status == JobStatus.IN_PROGRESS for j in self._jobs.values())
 
         stats_text = f"{total} files"
         if in_progress > 0:

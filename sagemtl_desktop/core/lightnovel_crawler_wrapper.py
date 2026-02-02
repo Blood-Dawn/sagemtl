@@ -88,27 +88,25 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             self.temp_dir = tempfile.mkdtemp(prefix='sagemtl_lncrawl_')
 
             # Run the crawler in a thread pool to avoid blocking your UI
-            novel = await asyncio.get_event_loop().run_in_executor(
+            return await asyncio.get_event_loop().run_in_executor(
                 None,
                 self._run_crawler_sync,
                 url,
                 progress_callback,
                 max_chapters
             )
-            return novel
         except RuntimeError as e:
             error_msg = str(e)
             
-            # Check if it's an unsupported site error
-            if "not supported" in error_msg.lower() or "no results" in error_msg.lower():
-                if progress_callback:
-                    progress_callback(0, 100, "Site not in lncrawl database. Trying generic crawler...")
-                
-                # Fall back to generic crawler
-                return await self._fetch_with_generic_crawler(url, progress_callback, max_chapters)
-            else:
-                # Re-raise other errors
+            # Check if it's not an unsupported site error - re-raise other errors
+            if "not supported" not in error_msg.lower() and "no results" not in error_msg.lower():
                 raise
+            
+            if progress_callback:
+                progress_callback(0, 100, "Site not in lncrawl database. Trying generic crawler...")
+            
+            # Fall back to generic crawler
+            return await self._fetch_with_generic_crawler(url, progress_callback, max_chapters)
         except Exception as e:
             # For unexpected errors, try generic crawler as last resort
             if progress_callback:
@@ -162,13 +160,12 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         across multiple sites.
         """
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
+            return await asyncio.get_event_loop().run_in_executor(
                 None,
                 self._search_novel_sync,
                 novel_name,
                 progress_callback
             )
-            return result
         except Exception as e:
             if LNException and isinstance(e, LNException):
                 raise RuntimeError(
@@ -184,7 +181,7 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         import sys
         
         if progress_callback:
-            progress_callback(0, 100, f"Loading sources...")
+            progress_callback(0, 100, "Loading sources...")
 
         try:
             # Temporarily override sys.argv to avoid argparse conflicts with pytest
@@ -222,6 +219,11 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             if progress_callback:
                 progress_callback(90, 100, "Processing results...")
 
+            # Debug: log what we got back
+            if hasattr(app, 'search_results'):
+                if progress_callback:
+                    progress_callback(92, 100, f"Raw results count: {len(app.search_results) if app.search_results else 0}")
+            
             # Extract search results
             # search_results should be a list of Result objects with .novel and .origin attributes
             results = []
@@ -322,10 +324,10 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
                 )
 
             # Limit chapters if max_chapters is specified
-            if max_chapters is not None and hasattr(app, 'crawler') and app.crawler:
-                original_chapters = getattr(app.crawler, 'chapters', [])
+            if max_chapters is not None and (crawler := getattr(app, 'crawler', None)):
+                original_chapters = getattr(crawler, 'chapters', [])
                 if len(original_chapters) > max_chapters:
-                    app.crawler.chapters = original_chapters[:max_chapters]
+                    crawler.chapters = original_chapters[:max_chapters]
                     if progress_callback:
                         progress_callback(20, 100, f"Limited to first {max_chapters} chapters for testing")
 
@@ -493,9 +495,8 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
                             domain = home_str
 
                         # Domain match (handles subdomains)
-                        if domain:
-                            if netloc == domain or netloc.endswith('.' + domain):
-                                return True
+                        if domain and (netloc == domain or netloc.endswith('.' + domain)):
+                            return True
                         # Fallback: substring match on full URL
                         if home_str and home_str in url.lower():
                             return True

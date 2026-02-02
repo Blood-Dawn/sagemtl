@@ -1,18 +1,16 @@
 """
-Controls and settings panel.
+Controls and settings panel - simplified to just URL fetch.
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QPushButton, QComboBox, QLabel, QLineEdit,
-    QFileDialog, QToolBar, QMenu
+    QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QLabel, QLineEdit
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtCore import Signal
 
 
 class ControlsPanel(QWidget):
-    """Widget containing all controls and settings"""
+    """Widget containing URL fetch control - compact toolbar style"""
 
     # Signals
     import_files_clicked = Signal()
@@ -30,148 +28,26 @@ class ControlsPanel(QWidget):
 
     def _init_ui(self):
         """Initialize UI"""
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(8)
 
-        # Toolbar with main actions
-        toolbar = self._create_toolbar()
-        layout.addWidget(toolbar)
+        # URL label
+        url_label = QLabel("URL or Name:")
+        layout.addWidget(url_label)
 
-        # Settings group
-        settings_group = self._create_settings_group()
-        layout.addWidget(settings_group)
-
-        # URL fetch group
-        url_group = self._create_url_fetch_group()
-        layout.addWidget(url_group)
-
-        layout.addStretch()
-
-    def _create_toolbar(self) -> QToolBar:
-        """Create toolbar with main action buttons"""
-        toolbar = QToolBar()
-        toolbar.setMovable(False)
-
-        # Import Files button
-        import_btn = QPushButton("📁 Import Files")
-        import_btn.setToolTip("Import text or EPUB files")
-        import_btn.clicked.connect(self.import_files_clicked.emit)
-        toolbar.addWidget(import_btn)
-
-        toolbar.addSeparator()
-
-        # Load Glossary button
-        glossary_btn = QPushButton("📋 Load Glossary")
-        glossary_btn.setToolTip("Load CSV glossary file")
-        glossary_btn.clicked.connect(self._on_load_glossary)
-        toolbar.addWidget(glossary_btn)
-
-        toolbar.addSeparator()
-
-        # Start Processing button
-        self.process_btn = QPushButton("▶ Start Processing")
-        self.process_btn.setToolTip("Process all pending files")
-        self.process_btn.setStyleSheet("font-weight: bold; padding: 6px 12px;")
-        self.process_btn.clicked.connect(self.start_processing_clicked.emit)
-        toolbar.addWidget(self.process_btn)
-
-        toolbar.addSeparator()
-
-        # Export button
-        export_btn = QPushButton("💾 Export Results")
-        export_btn.setToolTip("Export cleaned text files")
-        export_btn.clicked.connect(self.export_clicked.emit)
-        toolbar.addWidget(export_btn)
-
-        return toolbar
-
-    def _create_settings_group(self) -> QGroupBox:
-        """Create language settings group"""
-        group = QGroupBox("Translation Settings")
-        layout = QHBoxLayout(group)
-
-        # Language preset button
-        preset_btn = QPushButton("⚡ Presets")
-        preset_btn.setToolTip("Quick language pair presets")
-        preset_btn.clicked.connect(self._show_preset_menu)
-        layout.addWidget(preset_btn)
-
-        layout.addSpacing(10)
-
-        # Source language
-        layout.addWidget(QLabel("Source:"))
-
-        self.source_combo = QComboBox()
-        self.source_combo.addItems([
-            "Auto-detect",
-            "Chinese (zh)",
-            "Japanese (ja)",
-            "Korean (ko)",
-            "Spanish (es)",
-            "French (fr)",
-            "German (de)",
-        ])
-        self.source_combo.currentTextChanged.connect(self._on_source_changed)
-        layout.addWidget(self.source_combo)
-
-        layout.addSpacing(20)
-
-        # Target language
-        layout.addWidget(QLabel("Target:"))
-
-        self.target_combo = QComboBox()
-        self.target_combo.addItems([
-            "English (en)",
-            "Spanish (es)",
-            "French (fr)",
-            "German (de)",
-            "Chinese (zh)",
-            "Japanese (ja)",
-        ])
-        self.target_combo.currentTextChanged.connect(self._on_target_changed)
-        layout.addWidget(self.target_combo)
-
-        layout.addSpacing(20)
-
-        # Glossary status
-        self.glossary_label = QLabel("No glossary loaded")
-        self.glossary_label.setStyleSheet("color: gray; font-style: italic;")
-        layout.addWidget(self.glossary_label)
-
-        layout.addStretch()
-
-        return group
-
-    def _create_url_fetch_group(self) -> QGroupBox:
-        """Create URL fetch group"""
-        group = QGroupBox("Fetch Novel")
-        layout = QHBoxLayout(group)
-
-        layout.addWidget(QLabel("URL or Name:"))
-
+        # URL input - stretches to fill available space
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("https://example.com/novel or search for novel name")
-        layout.addWidget(self.url_input)
+        self.url_input.returnPressed.connect(self._on_fetch_url)
+        self.url_input.setMinimumWidth(400)
+        layout.addWidget(self.url_input, stretch=1)
 
-        fetch_btn = QPushButton("Fetch")
+        # Fetch button
+        fetch_btn = QPushButton("🔍 Fetch")
         fetch_btn.clicked.connect(self._on_fetch_url)
+        fetch_btn.setMinimumWidth(80)
         layout.addWidget(fetch_btn)
-
-        return group
-
-    def _on_load_glossary(self):
-        """Handle glossary load button"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Glossary File",
-            "",
-            "CSV Files (*.csv);;All Files (*)"
-        )
-
-        if file_path:
-            self._glossary_path = file_path
-            self.glossary_label.setText(f"Glossary: {file_path.split('/')[-1]}")
-            self.glossary_label.setStyleSheet("color: green;")
-            self.load_glossary_clicked.emit(file_path)
 
     def _on_fetch_url(self):
         """Handle fetch URL button"""
@@ -180,103 +56,10 @@ class ControlsPanel(QWidget):
             self.fetch_url_clicked.emit(url)
             self.url_input.clear()
 
-    def _on_source_changed(self, text: str):
-        """Handle source language change"""
-        # Extract language code from text (e.g., "Chinese (zh)" -> "zh")
-        if "(" in text and ")" in text:
-            code = text.split("(")[1].split(")")[0]
-        elif text == "Auto-detect":
-            code = "auto"
-        else:
-            code = "en"
-
-        self.source_lang_changed.emit(code)
-
-    def _on_target_changed(self, text: str):
-        """Handle target language change"""
-        # Extract language code from text
-        if "(" in text and ")" in text:
-            code = text.split("(")[1].split(")")[0]
-        else:
-            code = "en"
-
-        self.target_lang_changed.emit(code)
-
-    def _show_preset_menu(self):
-        """Show language preset menu"""
-        menu = QMenu(self)
-
-        # Common MTL presets
-        presets = [
-            ("Auto → English (Recommended for MTL)", "Auto-detect", "English (en)"),
-            ("Chinese → English", "Chinese (zh)", "English (en)"),
-            ("Japanese → English", "Japanese (ja)", "English (en)"),
-            ("Korean → English", "Korean (ko)", "English (en)"),
-            None,  # Separator
-            ("English → Chinese", "English (en)", "Chinese (zh)"),
-            ("English → Japanese", "English (en)", "Japanese (ja)"),
-            ("English → Korean", "English (en)", "Korean (ko)"),
-        ]
-
-        for preset in presets:
-            if preset is None:
-                menu.addSeparator()
-                continue
-
-            label, source, target = preset
-            action = QAction(label, self)
-            action.triggered.connect(lambda checked, s=source, t=target: self._apply_preset(s, t))
-            menu.addAction(action)
-
-        # Show menu below the preset button
-        preset_btn = self.sender()
-        menu.exec(preset_btn.mapToGlobal(preset_btn.rect().bottomLeft()))
-
-    def _apply_preset(self, source: str, target: str):
-        """Apply a language preset"""
-        # Set source language
-        for i in range(self.source_combo.count()):
-            if source in self.source_combo.itemText(i):
-                self.source_combo.setCurrentIndex(i)
-                break
-
-        # Set target language
-        for i in range(self.target_combo.count()):
-            if target in self.target_combo.itemText(i):
-                self.target_combo.setCurrentIndex(i)
-                break
-
     def set_processing_enabled(self, enabled: bool):
-        """Enable/disable processing button"""
-        self.process_btn.setEnabled(enabled)
-
-        if not enabled:
-            self.process_btn.setText("⏸ Processing...")
-        else:
-            self.process_btn.setText("▶ Start Processing")
+        """Enable/disable processing - placeholder for compatibility"""
+        pass
 
     def populate_languages(self, available_languages: list):
-        """
-        Populate language dropdowns with available Argos models.
-
-        Args:
-            available_languages: List of (from_code, to_code, display_name) tuples
-        """
-        # Get unique source languages
-        source_langs = set()
-        target_langs = set()
-
-        for from_code, to_code, display_name in available_languages:
-            source_langs.add((from_code, display_name.split(" → ")[0]))
-            target_langs.add((to_code, display_name.split(" → ")[1]))
-
-        # Update source combo
-        self.source_combo.clear()
-        self.source_combo.addItem("Auto-detect")
-        for code, name in sorted(source_langs):
-            self.source_combo.addItem(f"{name} ({code})")
-
-        # Update target combo
-        self.target_combo.clear()
-        for code, name in sorted(target_langs):
-            self.target_combo.addItem(f"{name} ({code})")
+        """Placeholder for compatibility"""
+        pass

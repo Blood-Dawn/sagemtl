@@ -262,9 +262,8 @@ class GenericNovelCrawler:
                     author = candidate.get_text(strip=True)
                 
                 # Clean up common prefixes
-                author = re.sub(r'^(By|Author|Writer):\s*', '', author, flags=re.I)
-                if author:
-                    return author.strip()
+                if author := re.sub(r'^(By|Author|Writer):\s*', '', author, flags=re.I).strip():
+                    return author
         
         return None
     
@@ -374,7 +373,7 @@ class GenericNovelCrawler:
                     full_url = urljoin(base_url, href)
                     
                     # Avoid duplicates
-                    if not any(url == full_url for url, _ in found_chapters):
+                    if all(url != full_url for url, _ in found_chapters):
                         found_chapters.append((full_url, text))
             
             # If we found a reasonable number of chapters in this container, use it
@@ -396,14 +395,12 @@ class GenericNovelCrawler:
             for header in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div'], class_=re.compile(r'title|header', re.I)):
                 if header_text.lower() in header.get_text(strip=True).lower():
                     # Return the parent container
-                    parent = header.find_parent(['section', 'div', 'article'])
-                    if parent:
+                    if parent := header.find_parent(['section', 'div', 'article']):
                         return parent
             
             # Also look for elements with the text directly
             for elem in soup.find_all(string=re.compile(header_text, re.I)):
-                parent = elem.find_parent(['section', 'div', 'article'])
-                if parent:
+                if parent := elem.find_parent(['section', 'div', 'article']):
                     return parent
         
         return None
@@ -466,8 +463,6 @@ class GenericNovelCrawler:
                 break
         
         return pagination_links
-        
-        return pagination_links
 
     def _get_direct_link_text(self, link) -> str:
         """
@@ -477,10 +472,8 @@ class GenericNovelCrawler:
         # Try to get just the direct text (not from children like date spans)
         direct_text_parts = []
         for child in link.children:
-            if isinstance(child, str):
-                text = child.strip()
-                if text:
-                    direct_text_parts.append(text)
+            if isinstance(child, str) and (text := child.strip()):
+                direct_text_parts.append(text)
         
         if direct_text_parts:
             return ' '.join(direct_text_parts)
@@ -545,16 +538,11 @@ class GenericNovelCrawler:
         # Avoid navigation links
         nav_keywords = ['home', 'index', 'contact', 'about', 'login', 'register', 'profile', 
                         'search', 'browse', 'list', 'tags', 'updates', 'login', 'member']
-        if any(kw in text_lower for kw in nav_keywords):
-            return False
-        if any(kw in href_lower for kw in nav_keywords):
+        if any(kw in text_lower for kw in nav_keywords) or any(kw in href_lower for kw in nav_keywords):
             return False
         
         # If URL contains chapter/post/read, likely a chapter
-        if any(word in href_lower for word in ['chapter', 'post', 'read']):
-            return True
-        
-        return False
+        return any(word in href_lower for word in ['chapter', 'post', 'read'])
     
     def _sort_chapters(self, chapters: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
         """Sort chapters by number if possible."""
@@ -607,9 +595,8 @@ class GenericNovelCrawler:
         
         # Try to detect which pattern the URL uses
         for pattern, replacement in patterns:
-            match = re.search(pattern, url, re.I)
-            if match:
-                base_chapter_num = int(match.group(2) if len(match.groups()) > 1 else match.group(1))
+            if match := re.search(pattern, url, re.I):
+                base_chapter_num = int(match[2] if len(match.groups()) > 1 else match[1])
                 pattern_used = pattern
                 replacement_template = replacement
                 break
@@ -694,9 +681,8 @@ class GenericNovelCrawler:
             Cleaned text
         """
         # Check against junk patterns
-        for pattern in self.JUNK_PATTERNS:
-            if re.match(pattern, text.strip(), re.I):
-                return ""
+        if next((True for pattern in self.JUNK_PATTERNS if re.match(pattern, text.strip(), re.I)), False):
+            return ""
         return text
     
     def _deduplicate_paragraphs(self, paragraphs: List[str]) -> List[str]:
@@ -746,16 +732,15 @@ class GenericNovelCrawler:
         for pattern in nav_patterns:
             for element in soup.find_all(class_=re.compile(pattern, re.I)):
                 # Don't remove if it's a content area
-                if element.get('class') and any('content' in c.lower() for c in element.get('class', [])):
-                    continue
-                element.decompose()
+                classes = element.get('class') or []
+                if all('content' not in c.lower() for c in classes):
+                    element.decompose()
         
         # Remove elements by common nav IDs
         for element in soup.find_all(id=re.compile(r'nav|menu|sidebar|comment|share|social|ad[sv]?|banner', re.I)):
             element.decompose()
         
         # Try to find the main content area
-        content = None
         content_candidates = [
             soup.find('div', class_=re.compile(r'chapter[-_]?content|post[-_]?content|entry[-_]?content|article[-_]?content|reading[-_]?content', re.I)),
             soup.find('div', class_=re.compile(r'^content$', re.I)),
@@ -764,14 +749,7 @@ class GenericNovelCrawler:
             soup.find('main'),
         ]
         
-        for candidate in content_candidates:
-            if candidate:
-                content = candidate
-                break
-        
-        if not content:
-            # Fallback: use body
-            content = soup.find('body')
+        content = next((c for c in content_candidates if c), None) or soup.find('body')
         
         if not content:
             return ""
@@ -780,10 +758,8 @@ class GenericNovelCrawler:
         paragraphs = []
         for p in content.find_all(['p']):
             text = p.get_text(strip=True)
-            if text and len(text) > 20:
-                cleaned = self._clean_chapter_text(text)
-                if cleaned:
-                    paragraphs.append(cleaned)
+            if text and len(text) > 20 and (cleaned := self._clean_chapter_text(text)):
+                paragraphs.append(cleaned)
         
         # If we got reasonable content from <p> tags, use it
         if len(paragraphs) >= 3:
@@ -799,10 +775,8 @@ class GenericNovelCrawler:
         paragraphs = []
         for p in raw_paragraphs:
             text = ' '.join(p.split())  # Normalize whitespace
-            if text and len(text) > 20:
-                cleaned = self._clean_chapter_text(text)
-                if cleaned:
-                    paragraphs.append(cleaned)
+            if text and len(text) > 20 and (cleaned := self._clean_chapter_text(text)):
+                paragraphs.append(cleaned)
         
         # Deduplicate paragraphs
         paragraphs = self._deduplicate_paragraphs(paragraphs)

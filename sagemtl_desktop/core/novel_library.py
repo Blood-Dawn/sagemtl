@@ -96,17 +96,11 @@ class SavedNovel:
     
     def get_chapter(self, chapter_id: str) -> Optional[SavedChapter]:
         """Get a chapter by ID"""
-        for ch in self.chapters:
-            if ch.chapter_id == chapter_id:
-                return ch
-        return None
+        return next((ch for ch in self.chapters if ch.chapter_id == chapter_id), None)
     
     def get_chapter_by_number(self, chapter_number: int) -> Optional[SavedChapter]:
         """Get a chapter by number"""
-        for ch in self.chapters:
-            if ch.chapter_number == chapter_number:
-                return ch
-        return None
+        return next((ch for ch in self.chapters if ch.chapter_number == chapter_number), None)
 
 
 class NovelLibrary:
@@ -170,12 +164,11 @@ class NovelLibrary:
             print("Creating backup and starting fresh library...")
             # Backup the corrupted file
             backup_path = self.library_file.with_suffix('.json.corrupted')
-            try:
+            import contextlib
+            with contextlib.suppress(Exception):
                 import shutil
                 shutil.copy2(self.library_file, backup_path)
                 print(f"Backup saved to: {backup_path}")
-            except Exception:
-                pass
             # Start fresh
             self._novels = {}
             self._save_library()  # Create a new valid library file
@@ -249,14 +242,15 @@ class NovelLibrary:
         Returns:
             The created SavedNovel
         """
-        chapters = []
-        for ch in crawled_novel.chapters:
-            chapters.append({
+        chapters = [
+            {
                 'title': ch.title,
                 'content': ch.content,
                 'chapter_number': ch.chapter_number,
                 'url': getattr(ch, 'url', '')
-            })
+            }
+            for ch in crawled_novel.chapters
+        ]
         
         return self.add_novel(
             title=crawled_novel.title,
@@ -271,10 +265,7 @@ class NovelLibrary:
     
     def get_novel_by_url(self, source_url: str) -> Optional[SavedNovel]:
         """Get a novel by its source URL"""
-        for novel in self._novels.values():
-            if novel.source_url == source_url:
-                return novel
-        return None
+        return next((novel for novel in self._novels.values() if novel.source_url == source_url), None)
     
     def get_all_novels(self) -> List[SavedNovel]:
         """Get all novels in the library"""
