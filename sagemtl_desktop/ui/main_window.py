@@ -16,9 +16,9 @@ from .controls_panel import ControlsPanel
 from .log_panel import LogPanel
 from .url_history_panel import URLHistoryPanel
 from .dialogs import (
-    ErrorDialog, AboutDialog, SearchResultsDialog,
+    ErrorDialog, AboutDialog, SearchResultsDialog, SearchNovelGroupsDialog,
     SearchProgressDialog, DownloadProgressDialog, ChapterSelectionDialog,
-    CrawlOptionsDialog, BatchCrawlDialog
+    CrawlOptionsDialog, BatchCrawlDialog, HelpGuideDialog
 )
 from .export_dialog import ExportDialog
 from .glossary_editor import GlossaryEditorDialog, QuickTermDialog
@@ -336,6 +336,11 @@ class MainWindow(QMainWindow):
         translation_viewer_action.triggered.connect(self._on_open_translation_viewer)
         view_menu.addAction(translation_viewer_action)
 
+        self.show_active_search_action = QAction(self._tr("action.show_active_search_progress"), self)
+        self.show_active_search_action.setEnabled(False)
+        self.show_active_search_action.triggered.connect(self._on_show_active_search_progress)
+        view_menu.addAction(self.show_active_search_action)
+
         view_menu.addSeparator()
 
         ui_lang_menu = view_menu.addMenu(self._tr("submenu.ui_language"))
@@ -355,6 +360,13 @@ class MainWindow(QMainWindow):
 
         # ===== Help menu =====
         help_menu = menubar.addMenu(self._tr("menu.help"))
+
+        help_guide_action = QAction(self._tr("action.open_help_guide"), self)
+        help_guide_action.setShortcut("F1")
+        help_guide_action.triggered.connect(self._on_help_guide)
+        help_menu.addAction(help_guide_action)
+
+        help_menu.addSeparator()
 
         supported_sites_action = QAction(self._tr("action.view_supported_sites"), self)
         supported_sites_action.triggered.connect(self._on_supported_sites)
@@ -705,8 +717,10 @@ class MainWindow(QMainWindow):
         )
         
         # Create and show search progress dialog (non-modal)
-        search_dialog = SearchProgressDialog(f"Searching for: {novel_name}", self)
+        search_dialog = SearchProgressDialog(novel_name, self)
         search_dialog.show()
+        search_dialog.set_progress(0, 100)
+        self._set_active_search_action_state(True)
         
         # Search results storage
         search_results = {'results': None, 'error': None}
@@ -751,14 +765,15 @@ class MainWindow(QMainWindow):
         def on_search_log(timestamp, log_job_id, level, message):
             if log_job_id == job_id:
                 search_dialog.add_log_line(message, level=level)
-                # Try to parse progress from message (e.g., "Searching across 376 sites...")
-                if "across" in message and "sites" in message:
-                    import re
-                    if match := re.search(r'(\d+)\s*sites', message):
-                        total_sites = int(match.group(1))
-                        search_dialog.set_progress(0, total_sites)
-        
+
+        def on_search_progress(progress_job_id, progress):
+            if progress_job_id != job_id:
+                return
+            safe_progress = int(max(0.0, min(100.0, float(progress))))
+            search_dialog.set_progress(safe_progress, 100)
+
         self.job_manager.log_emitted.connect(on_search_log)
+        self.job_manager.progress_changed.connect(on_search_progress)
         
         # Store context for later
         self._pending_search = {
@@ -784,6 +799,7 @@ class MainWindow(QMainWindow):
             with contextlib.suppress(Exception):
                 self.job_manager.job_updated.disconnect(on_job_completed)
                 self.job_manager.log_emitted.disconnect(on_search_log)
+                self.job_manager.progress_changed.disconnect(on_search_progress)
             
             # Close search dialog and show results
             search_dialog.close()
@@ -798,6 +814,7 @@ class MainWindow(QMainWindow):
     def _on_search_completed(self):
         """Handle search completion"""
         if not hasattr(self, '_pending_search'):
+            self._set_active_search_action_state(False)
             return
         
         ctx = self._pending_search
@@ -811,27 +828,114 @@ class MainWindow(QMainWindow):
                 error_message=str(search_results['error']),
             )
             del self._pending_search
+            self._set_active_search_action_state(False)
             return
         
         results = search_results['results']
         if not results:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self,
                 "No Results",
                 f"No novels found matching '{ctx['novel_name']}'"
             )
             del self._pending_search
+            self._set_active_search_action_state(False)
             return
-        
-        # Show search results dialog
-        dialog = SearchResultsDialog(results, self)
-        if dialog.exec():
-            if selected := dialog.get_selected_result():
-                # Crawl the selected URL
-                self._crawl_url(selected['url'], ctx['crawler'], selected['title'])
+
+        chapter_count_cache: dict[str, int | None] = {}
+
+        # Fill known chapter counts from existing library cache first.
+        for result in results:
+            if result.get("chapter_count") is not None:
+                continue
+            result_url = (result.get("url") or "").strip()
+            if not result_url:
+                continue
+            existing = self.novel_library.get_novel_by_url(result_url)
+            if existing:
+                cached_count = len(existing.chapters)
+                result["chapter_count"] = cached_count
+                chapter_count_cache[result_url] = cached_count
+
+        def chapter_count_resolver(result: dict):
+            import asyncio
+
+            url = (result.get("url") or "").strip()
+            if not url:
+                return None
+
+            if url in chapter_count_cache:
+                return chapter_count_cache[url]
+
+            existing = self.novel_library.get_novel_by_url(url)
+            if existing:
+                cached_count = len(existing.chapters)
+                chapter_count_cache[url] = cached_count
+                return cached_count
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                chapter_count = loop.run_until_complete(
+                    self.crawl_service.discover_chapter_count(
+                        crawler=ctx["crawler"],
+                        url=url
+                    )
+                )
+                chapter_count_cache[url] = chapter_count
+                return chapter_count
+            finally:
+                loop.close()
+
+        grouped_results = self.search_service.group_results(results)
+        if not grouped_results:
+            QMessageBox.warning(
+                self,
+                "No Results",
+                f"No usable source URLs found for '{ctx['novel_name']}'"
+            )
+            del self._pending_search
+            self._set_active_search_action_state(False)
+            return
+
+        auto_prefetch_top_n = 8
+        while True:
+            self.search_service.refresh_group_summaries(grouped_results)
+            group_dialog = SearchNovelGroupsDialog(grouped_results, self)
+            if not group_dialog.exec():
+                break
+
+            selected_group = group_dialog.get_selected_group()
+            if not selected_group:
+                continue
+
+            source_rows = selected_group.get("sources") or []
+            if not source_rows:
+                QMessageBox.warning(
+                    self,
+                    "No Sources",
+                    "No source URLs are available for this grouped novel."
+                )
+                continue
+
+            source_dialog = SearchResultsDialog(
+                source_rows,
+                self,
+                chapter_count_resolver=chapter_count_resolver,
+                novel_title=selected_group.get("title"),
+                auto_prefetch_rows=self.search_service.select_prefetch_rows(
+                    source_rows,
+                    top_n=auto_prefetch_top_n,
+                ),
+            )
+            if source_dialog.exec():
+                if selected := source_dialog.get_selected_result():
+                    # Crawl the selected source URL.
+                    self._crawl_url(selected['url'], ctx['crawler'], selected['title'])
+                    break
         
         del self._pending_search
+        self._set_active_search_action_state(False)
 
     def _crawl_url(self, url: str, selected_crawler, novel_title: str = None):
         """Crawl a novel from a direct URL - two phase: discover then download"""
@@ -1533,6 +1637,7 @@ class MainWindow(QMainWindow):
         self._sync_translation_backend_actions()
         self._sync_chunk_size_actions()
         self._sync_ui_language_actions()
+        self._set_active_search_action_state(hasattr(self, "_pending_search"))
 
         language_name_key = "action.ui_lang_english" if normalized == "en" else "action.ui_lang_spanish"
         QMessageBox.information(
@@ -1593,6 +1698,26 @@ class MainWindow(QMainWindow):
         
         viewer.show()
 
+    def _on_show_active_search_progress(self):
+        """Reopen the active search progress dialog if a search job is still running."""
+        if not hasattr(self, "_pending_search"):
+            QMessageBox.information(self, "Search", "No active search is currently running.")
+            return
+
+        ctx = self._pending_search
+        search_dialog = ctx.get("search_dialog")
+        if not search_dialog:
+            QMessageBox.information(self, "Search", "Search progress dialog is unavailable.")
+            return
+
+        search_dialog.showNormal()
+        search_dialog.raise_()
+        search_dialog.activateWindow()
+
+    def _set_active_search_action_state(self, enabled: bool):
+        if hasattr(self, "show_active_search_action"):
+            self.show_active_search_action.setEnabled(bool(enabled))
+
     def _on_apply_glossary_to_current(self):
         """Apply glossary to currently displayed chapter"""
         if not self._current_novel_id:
@@ -1625,22 +1750,25 @@ class MainWindow(QMainWindow):
         chapter = novel.chapters[chapter_idx]
         original_content = chapter.content
         
-        # Apply glossary
-        cleaned_content = self._apply_glossary_replacements(original_content, combined)
+        # Apply glossary using the unified manager pipeline.
+        cleaned_content = self.glossary_manager.apply_glossary(
+            original_content,
+            self._current_novel_id
+        )
         
         # Update the display
         self.preview_panel.set_cleaned_text(f"✨ Cleaned:\n\n{cleaned_content}")
         
-        # Count replacements
-        replacement_count = sum(term.source in original_content for term in combined)
+        changed = cleaned_content != original_content
         
         self.logger.info(
-            f"Applied {len(combined)} glossary terms ({replacement_count} replacements) to chapter",
+            f"Applied {len(combined)} glossary terms (changed={changed}) to chapter",
             stage="glossary"
         )
         
         QMessageBox.information(self, "Glossary Applied", 
-            f"Applied {len(combined)} glossary terms.\n{replacement_count} replacements made.")
+            f"Applied {len(combined)} glossary terms.\n"
+            f"Chapter changed: {'Yes' if changed else 'No'}")
 
     def _on_apply_glossary_to_all(self):
         """Apply glossary to all chapters of current novel"""
@@ -1674,40 +1802,23 @@ class MainWindow(QMainWindow):
             return
         
         # Apply to all chapters
-        total_replacements = 0
+        changed_chapters = 0
         for chapter in novel.chapters:
             original = chapter.content
-            cleaned = self._apply_glossary_replacements(original, combined)
+            cleaned = self.glossary_manager.apply_glossary(original, self._current_novel_id)
             chapter.cleaned_content = cleaned
-            total_replacements += sum(term.source in original for term in combined)
+            changed_chapters += int(cleaned != original)
 
         self.novel_library.update_novel(novel)
         
         self.logger.info(
-            f"Applied glossary to {len(novel.chapters)} chapters ({total_replacements} replacements)",
+            f"Applied glossary to {len(novel.chapters)} chapters ({changed_chapters} chapters changed)",
             stage="glossary"
         )
         
         QMessageBox.information(self, "Complete", 
             f"Applied glossary to {len(novel.chapters)} chapters.\n"
-            f"Total replacements: {total_replacements}")
-
-    def _apply_glossary_replacements(self, text: str, terms: list) -> str:
-        """Apply glossary term replacements to text"""
-        import re
-        result = text
-        for term in terms:
-            if term.word_boundary:
-                # Use word boundary regex
-                pattern = r'\b' + re.escape(term.source) + r'\b'
-                result = re.sub(pattern, term.target, result, flags=0 if term.case_sensitive else re.IGNORECASE)
-            elif term.case_sensitive:
-                result = result.replace(term.source, term.target)
-            else:
-                # Case-insensitive replace
-                pattern = re.escape(term.source)
-                result = re.sub(pattern, term.target, result, flags=re.IGNORECASE)
-        return result
+            f"Chapters changed: {changed_chapters}")
 
     def _on_start_processing(self):
         """Handle start processing"""
@@ -1743,6 +1854,11 @@ class MainWindow(QMainWindow):
     def _process_job(self, job_id: str):
         """Process a single job"""
         job = self.job_manager.get_job(job_id)
+        job_novel_id = self._resolve_job_novel_id(job)
+
+        global_term_count = len(self.glossary_manager.get_global_terms())
+        novel_term_count = len(self.glossary_manager.get_novel_terms(job_novel_id)) if job_novel_id else 0
+        manager_term_count = global_term_count + novel_term_count
 
         self.logger.info(
             f"Starting translation job: {job.name}",
@@ -1751,15 +1867,19 @@ class MainWindow(QMainWindow):
             content_length=len(job.original_text),
             translation_backend=self.processing_options.translation_backend,
             max_chunk_size=self.processing_options.max_chunk_size,
+            glossary_global_terms=global_term_count,
+            glossary_novel_terms=novel_term_count,
         )
 
         def translate_processor(job, progress_cb, log_cb):
             # Step 1: Apply glossary before
+            text = job.original_text
             if self.glossary.is_loaded():
-                log_cb("info", "Applying glossary (before translation)...")
-                text = self.glossary.apply_before(job.original_text)
-            else:
-                text = job.original_text
+                log_cb("info", "Applying legacy CSV glossary (before translation)...")
+                text = self.glossary.apply_before(text)
+            if manager_term_count:
+                log_cb("info", f"Applying glossary manager terms (before translation): {manager_term_count}")
+                text = self.glossary_manager.apply_glossary(text, job_novel_id)
 
             # Step 2: Translate
             backend = self.processing_options.translation_backend
@@ -1782,11 +1902,13 @@ class MainWindow(QMainWindow):
                 translated = text
 
             # Step 3: Apply glossary after
+            cleaned = translated
             if self.glossary.is_loaded():
-                log_cb("info", "Applying glossary (after translation)...")
-                cleaned = self.glossary.apply_after(translated)
-            else:
-                cleaned = translated
+                log_cb("info", "Applying legacy CSV glossary (after translation)...")
+                cleaned = self.glossary.apply_after(cleaned)
+            if manager_term_count:
+                log_cb("info", f"Applying glossary manager terms (after translation): {manager_term_count}")
+                cleaned = self.glossary_manager.apply_glossary(cleaned, job_novel_id)
 
             # Store result
             job.cleaned_text = cleaned
@@ -1804,6 +1926,17 @@ class MainWindow(QMainWindow):
             )
 
         self.job_manager.start_job(job_id, translate_processor)
+
+    def _resolve_job_novel_id(self, job) -> str | None:
+        """Resolve novel id from job metadata for novel-specific glossary terms."""
+        if not job or not job.metadata:
+            return None
+        candidate = job.metadata.get("saved_novel_id") or job.metadata.get("novel_id")
+        if not candidate:
+            return None
+        if self.novel_library.get_novel(candidate):
+            return candidate
+        return None
 
     def _on_export(self):
         """Handle export"""
@@ -2078,7 +2211,9 @@ class MainWindow(QMainWindow):
         if novel := self.novel_library.get_novel(novel_id):
             old_name = novel.title
             novel.title = new_name
+            novel.title_locked = True
             self.novel_library.update_novel(novel)  # Proper persistence with timestamp
+            self.glossary_manager.set_novel_title(novel_id, new_name)
             
             # Update UI
             self.file_list_panel.update_novel_title(novel_id, new_name)
@@ -2159,6 +2294,11 @@ class MainWindow(QMainWindow):
     def _on_about(self):
         """Handle about dialog"""
         dialog = AboutDialog(self)
+        dialog.exec()
+
+    def _on_help_guide(self):
+        """Open detailed workflow/options help dialog."""
+        dialog = HelpGuideDialog(self)
         dialog.exec()
 
     # ==================== Glossary Manager Methods ====================

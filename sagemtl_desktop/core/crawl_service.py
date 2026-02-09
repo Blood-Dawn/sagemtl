@@ -29,6 +29,17 @@ class CrawlService:
             progress_callback(0, 100, "Stage 1/3: Preparing chapter discovery...")
         return await crawler.discover_chapters(url, progress_callback)
 
+    async def discover_chapter_count(
+        self,
+        crawler: CrawlerInterface,
+        url: str
+    ) -> Optional[int]:
+        """
+        Discover and return chapter count for a URL without starting downloads.
+        """
+        _, _, chapters = await self.discover_chapters(crawler, url)
+        return len(chapters) if chapters is not None else None
+
     @staticmethod
     def choose_download_strategy(
         discovered_chapters: List[Tuple[str, str]],

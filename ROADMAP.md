@@ -14,6 +14,11 @@ Status key:
 - Desktop app is functional for import, crawl, translate, and export.
 - Non-integration tests currently pass.
 - Integration coverage exists for wrapper search/download; non-integration regression coverage now includes crawl settings/resume/batch/export plus translation backend/chunking/settings/release-check flows.
+- Wrapper search now has non-integration regression coverage for lncrawl result-schema drift (grouped search results vs legacy result objects).
+- Search UX now includes live progress-bar updates during source scanning (not only stage-log updates).
+- Glossary enforcement now applies manager terms in processing flows with regression coverage for CJK contiguous-text matching.
+- User-renamed novel titles now persist across resume crawls via title-lock semantics.
+- Search UX now supports reopenable active-search progress dialogs, grouped novel results, and per-source chapter-count previews with top-row auto-prefetch.
 - Documentation and implementation were previously out of sync; this roadmap replaces fragmented plans.
 
 ## 2. Completed work

@@ -63,20 +63,28 @@ Desktop runtime path:
 - `sagemtl_desktop/ui/main_window.py` orchestrates UI, import, crawl, translate, and export.
 - `sagemtl_desktop/core/job_manager.py` handles threaded jobs and progress/log signals.
 - `sagemtl_desktop/core/translator.py` provides chunked translation with backend selection (`argos`, optional `googletrans`, `echo`) and translation-memory caching.
-- `sagemtl_desktop/core/glossary.py` and `sagemtl_desktop/core/glossary_manager.py` both exist; the app currently uses both flows.
+- `sagemtl_desktop/core/glossary_manager.py` is the primary glossary path for global + per-novel term enforcement; `glossary.py` remains as legacy CSV compatibility.
 - `sagemtl_desktop/core/novel_library.py` persists crawled content.
 - `sagemtl_desktop/core/crawl_service.py` now owns crawl strategy decisions used by the UI.
 - `sagemtl_desktop/core/crawl_settings.py` defines per-site crawl runtime settings.
-- `sagemtl_desktop/core/search_service.py` handles crawler search execution for UI jobs.
+- `sagemtl_desktop/core/search_service.py` handles crawler search execution, grouped-result shaping, and chapter-prefetch row selection for UI jobs.
 - `sagemtl_desktop/core/app_settings.py` bridges desktop preferences to shared `sagemtl.config.Settings`.
 - `sagemtl_desktop/ui/i18n.py` and `sagemtl_desktop/ui/error_hints.py` handle UI localization and actionable recovery hints.
+- `sagemtl_desktop/ui/dialogs.py` now includes a detailed workflow/options help guide and search-result chapter-count preview UX.
 
 Crawler flow today:
 
 - Search and URL classification use `LightNovelCrawlerWrapper`.
+- `LightNovelCrawlerWrapper` normalizes lncrawl search result schemas (`CombinedSearchResult` and legacy result objects) into stable UI rows (`title`, `url`, `site`).
+- Search now emits live in-flight progress during lncrawl source scans by polling `app.search_progress`, and the search dialog progress bar subscribes to job progress updates.
+- Search progress dialogs are reopenable while jobs remain active (`View -> Show Active Search Progress`).
+- Search results are now two-step (grouped novels -> source sites), and source lists can auto-prefetch chapter counts for top rows before crawl selection.
 - Interactive and batch URL crawls call `CrawlService` with per-site profiles and staged progress reporting.
 - Chapter downloads execute wrapper-backed selected-chapter flow with `GenericNovelCrawler` underneath, enabling retry/delay/robots policies and resume behavior.
 - `LightNovelCrawlerWrapper.fetch_novel()` remains available and is still covered by integration tests.
+- Translation job processing now applies glossary-manager terms before and after translation, with optional legacy CSV glossary layering.
+- Glossary replacement uses CJK-safe boundary behavior (no forced `\b` for CJK sources).
+- Manual novel renames set a persistent title lock so resume crawls do not overwrite user-defined titles.
 
 Shared packages:
 
@@ -85,7 +93,7 @@ Shared packages:
 
 ## 5. Verified baseline (2026-02-09)
 
-- Non-integration tests: `55 passed, 8 deselected`.
+- Non-integration tests: `65 passed, 8 deselected`.
 - Ruff findings: `0` (`python -m ruff check sagemtl sagemtl_desktop sagemtl_crawler tests`).
 - Python files: 101 total.
 - Largest files by line count:
@@ -112,6 +120,10 @@ Shared packages:
 - Added UI localization (English/Spanish) and actionable recovery hints in core failure paths.
 - Unified desktop and CLI settings through shared config fields and desktop settings bridge.
 - Added `python -m sagemtl release-check` automation for docs/lint/tests/import smoke checks.
+- Added regression coverage for lncrawl search schema compatibility so name-based search does not drop valid raw hits.
+- Added CJK-safe glossary matching and regression coverage for contiguous-text term replacement.
+- Added title-lock persistence for user-renamed novels with resume-crawl regression coverage.
+- Added search-result chapter-count discovery helper coverage (`CrawlService.discover_chapter_count`) and grouped-search shaping coverage in `SearchService`.
 
 ### Remaining priorities
 

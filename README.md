@@ -9,14 +9,20 @@ SageMTL is a desktop-first workflow for crawling web novels, translating them lo
 - Translation memory cache for repeated chunk reuse during desktop translation jobs.
 - Adaptive chunking for large chapters with language-aware punctuation handling.
 - Novel search and crawl execution through `LightNovelCrawlerWrapper`.
+- Search results are grouped by novel first, then per-site source selection with chapter-count preview.
+- Source selection auto-prefetches chapter counts for top rows in the background.
 - Site-specific crawl profiles (delay, user-agent, retries, robots policy, worker count).
 - URL-based chapter discovery and selective download (all, first N, custom range) with generic fallback and bounded chapter download workers.
 - Resume support for partially downloaded novels by source URL.
 - Batch URL crawl queue from dialog input or multiline fetch input.
 - Optional direct EPUB export from crawler output during crawl.
 - Glossary workflows (global and per-novel) with CSV import/export.
+- Glossary enforcement now applies global + novel terms in processing flows, including CJK-safe matching for contiguous source text.
 - EPUB import, TXT/EPUB export, and persistent local novel library.
+- Manual novel renames persist across resume crawls for the same source URL.
 - UI language selection (English/Spanish) and actionable recovery hints for common errors.
+- Active search progress dialog can be hidden/reopened while background search continues.
+- Detailed in-app workflow/options guide available from Help menu (`F1`).
 - Shared desktop/CLI settings model via `~/.sagemtl/config.toml`.
 - Batch job processing with progress and structured logs.
 

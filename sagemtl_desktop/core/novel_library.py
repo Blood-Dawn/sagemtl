@@ -47,6 +47,7 @@ class SavedNovel:
     updated_at: str = ""
     cover_url: str = ""
     description: str = ""
+    title_locked: bool = False  # Set when user manually renames a title.
     
     # Status tracking
     total_chapters: int = 0
@@ -72,6 +73,7 @@ class SavedNovel:
             'updated_at': self.updated_at,
             'cover_url': self.cover_url,
             'description': self.description,
+            'title_locked': self.title_locked,
             'total_chapters': self.total_chapters,
             'downloaded_chapters': self.downloaded_chapters,
         }
@@ -90,6 +92,7 @@ class SavedNovel:
             updated_at=data.get('updated_at', ''),
             cover_url=data.get('cover_url', ''),
             description=data.get('description', ''),
+            title_locked=bool(data.get('title_locked', False)),
             total_chapters=data.get('total_chapters', len(chapters)),
             downloaded_chapters=data.get('downloaded_chapters', len(chapters)),
         )
@@ -330,7 +333,8 @@ class NovelLibrary:
         existing.chapters.sort(
             key=lambda chapter: (chapter.chapter_number or 0, (chapter.title or "").lower())
         )
-        existing.title = crawled_novel.title or existing.title
+        if not existing.title_locked:
+            existing.title = crawled_novel.title or existing.title
         existing.author = crawled_novel.author or existing.author
         existing.total_chapters = len(existing.chapters)
         existing.downloaded_chapters = len([chapter for chapter in existing.chapters if chapter.content.strip()])

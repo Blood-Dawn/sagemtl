@@ -11,6 +11,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
+from urllib.parse import urlparse
 from sagemtl_desktop.core.crawler_interface import (
     CrawlerInterface,
     CrawledNovel,
@@ -274,8 +275,8 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             if progress_callback:
                 progress_callback(30, 100, f"Searching across {len(app.crawler_links)} sites...")
 
-            # Run the search
-            app.search_novel()
+            # Run the search with live progress polling.
+            self._run_search_with_live_progress(app, progress_callback)
             
             if progress_callback:
                 progress_callback(90, 100, "Processing results...")
@@ -285,33 +286,10 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
                 if progress_callback:
                     progress_callback(92, 100, f"Raw results count: {len(app.search_results) if app.search_results else 0}")
             
-            # Extract search results
-            # search_results should be a list of Result objects with .novel and .origin attributes
-            results = []
-            if hasattr(app, 'search_results') and app.search_results:
-                for result in app.search_results:
-                    try:
-                        # Each result has .novel (with .url) and .origin (source)
-                        novel = result.novel if hasattr(result, 'novel') else result
-                        origin = result.origin if hasattr(result, 'origin') else 'Unknown'
-                        
-                        url = None
-                        title = None
-                        
-                        if hasattr(novel, 'url'):
-                            url = novel.url
-                        if hasattr(novel, 'title'):
-                            title = novel.title
-                        
-                        if url and title:
-                            results.append({
-                                'title': title,
-                                'url': url,
-                                'site': str(origin)
-                            })
-                    except Exception:
-                        # Skip malformed results
-                        continue
+            # Normalize search results from both legacy and current lncrawl schemas.
+            results = self._normalize_search_results(
+                getattr(app, 'search_results', None)
+            )
             
             if progress_callback:
                 progress_callback(100, 100, f"Found {len(results)} results")
@@ -322,6 +300,163 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             if LNException and isinstance(e, LNException):
                 raise
             raise RuntimeError(f"Search error: {str(e)}")
+
+    @staticmethod
+    def _normalize_progress_percent(raw_progress: Any) -> int:
+        """Normalize unknown progress payloads into 0-100 integer percent."""
+        try:
+            numeric = float(raw_progress)
+        except (TypeError, ValueError):
+            numeric = 0.0
+        return int(max(0.0, min(100.0, numeric)))
+
+    @classmethod
+    def _map_search_progress(cls, raw_progress: Any) -> int:
+        """Map lncrawl search progress (0-100) into UI search stage (30-90)."""
+        return 30 + int(cls._normalize_progress_percent(raw_progress) * 0.6)
+
+    @classmethod
+    def _run_search_with_live_progress(cls, app: Any, progress_callback=None) -> None:
+        """
+        Execute app.search_novel() while polling app.search_progress for live updates.
+        """
+        import threading
+        import time
+
+        search_error: Dict[str, Exception] = {}
+
+        def _run_search():
+            try:
+                app.search_novel()
+            except Exception as exc:
+                search_error["error"] = exc
+
+        search_thread = threading.Thread(target=_run_search, daemon=True)
+        search_thread.start()
+
+        last_reported = -1
+        while search_thread.is_alive():
+            raw_progress = getattr(app, "search_progress", 0) or 0
+            progress_percent = cls._normalize_progress_percent(raw_progress)
+            mapped_progress = cls._map_search_progress(raw_progress)
+
+            if progress_callback and mapped_progress > last_reported:
+                progress_callback(
+                    mapped_progress,
+                    100,
+                    f"Searching sites... {progress_percent}%"
+                )
+                last_reported = mapped_progress
+
+            time.sleep(0.2)
+
+        search_thread.join()
+
+        final_raw_progress = getattr(app, "search_progress", 100) or 100
+        final_progress_percent = cls._normalize_progress_percent(final_raw_progress)
+        final_mapped_progress = cls._map_search_progress(final_raw_progress)
+        if progress_callback and final_mapped_progress > last_reported:
+            progress_callback(
+                final_mapped_progress,
+                100,
+                f"Searching sites... {final_progress_percent}%"
+            )
+
+        if "error" in search_error:
+            raise search_error["error"]
+
+    @staticmethod
+    def _get_result_field(item: Any, field: str) -> Any:
+        """Read a field from either dict-like or attribute-based lncrawl results."""
+        if item is None:
+            return None
+        if isinstance(item, dict):
+            return item.get(field)
+        return getattr(item, field, None)
+
+    @staticmethod
+    def _site_from_url(url: str) -> str:
+        hostname = (urlparse(url).hostname or "").strip().lower()
+        if hostname.startswith("www."):
+            hostname = hostname[4:]
+        return hostname or "Unknown"
+
+    @classmethod
+    def _append_search_result(
+        cls,
+        output: List[Dict[str, Any]],
+        seen_urls: set[str],
+        title: Any,
+        url: Any,
+        site: Any
+    ) -> None:
+        clean_title = str(title or "").strip()
+        clean_url = str(url or "").strip()
+        if not clean_title or not clean_url:
+            return
+
+        dedupe_key = clean_url.rstrip("/").lower()
+        if dedupe_key in seen_urls:
+            return
+        seen_urls.add(dedupe_key)
+
+        clean_site = str(site or "").strip() or cls._site_from_url(clean_url)
+        output.append(
+            {
+                'title': clean_title,
+                'url': clean_url,
+                'site': clean_site,
+                # Keep `info` for backward compatibility with older tests/consumers.
+                'info': clean_site,
+            }
+        )
+
+    @classmethod
+    def _normalize_search_results(cls, raw_results: Any) -> List[Dict[str, Any]]:
+        """
+        Normalize lncrawl search results across schema changes.
+
+        Supported shapes include:
+        - Legacy: Result(novel=<Novel>, origin=<site>)
+        - Current: CombinedSearchResult(title=<str>, novels=[SearchResult(...), ...])
+        """
+        normalized: List[Dict[str, Any]] = []
+        seen_urls: set[str] = set()
+
+        for result in raw_results or []:
+            # Current lncrawl shape: CombinedSearchResult with nested `novels`.
+            grouped_novels = cls._get_result_field(result, "novels") or []
+            if grouped_novels:
+                group_title = cls._get_result_field(result, "title")
+                group_site = (
+                    cls._get_result_field(result, "origin")
+                    or cls._get_result_field(result, "source")
+                )
+                for item in grouped_novels:
+                    cls._append_search_result(
+                        normalized,
+                        seen_urls,
+                        title=cls._get_result_field(item, "title") or group_title,
+                        url=cls._get_result_field(item, "url"),
+                        site=cls._get_result_field(item, "info") or group_site,
+                    )
+                continue
+
+            # Legacy shape: Result.novel + Result.origin.
+            novel = cls._get_result_field(result, "novel") or result
+            cls._append_search_result(
+                normalized,
+                seen_urls,
+                title=cls._get_result_field(novel, "title"),
+                url=cls._get_result_field(novel, "url"),
+                site=(
+                    cls._get_result_field(result, "origin")
+                    or cls._get_result_field(result, "info")
+                    or cls._get_result_field(result, "site")
+                ),
+            )
+
+        return normalized
 
     def _run_crawler_sync(self, url: str, progress_callback, max_chapters: int = None) -> CrawledNovel:
         """

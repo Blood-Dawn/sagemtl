@@ -15,6 +15,8 @@ from typing import Dict, List, Optional, Pattern, Tuple
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
+_CJK_CHAR_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]")
+
 
 @dataclass
 class GlossaryTerm:
@@ -309,6 +311,16 @@ class GlossaryManager:
                 self._save_novel_glossary(novel_id)
                 return True
         return False
+
+    def set_novel_title(self, novel_id: str, novel_title: str):
+        """Persist a novel glossary display title after library renames."""
+        if not novel_id:
+            return
+        glossary = self.load_novel_glossary(novel_id, novel_title)
+        if glossary.novel_title == novel_title:
+            return
+        glossary.novel_title = novel_title
+        self._save_novel_glossary(novel_id)
     
     def set_active_novel(self, novel_id: str, novel_title: str = ""):
         """Set the currently active novel for glossary operations"""
@@ -390,7 +402,7 @@ class GlossaryManager:
             return cached
 
         flags = 0 if term.case_sensitive else re.IGNORECASE
-        if term.word_boundary:
+        if self._use_word_boundaries(term):
             pattern = r'\b' + re.escape(term.source) + r'\b'
         else:
             pattern = re.escape(term.source)
@@ -398,6 +410,24 @@ class GlossaryManager:
         compiled = re.compile(pattern, flags=flags)
         self._pattern_cache[cache_key] = compiled
         return compiled
+
+    @staticmethod
+    def _contains_cjk(text: str) -> bool:
+        """Detect CJK scripts where regex word boundaries do not behave well."""
+        return bool(_CJK_CHAR_RE.search(text or ""))
+
+    @classmethod
+    def _use_word_boundaries(cls, term: GlossaryTerm) -> bool:
+        """
+        Decide whether `\\b` boundaries should be applied.
+
+        For CJK sources, boundaries are disabled even when requested, because
+        continuous CJK text has no whitespace separators and `\\b...\\b` misses
+        valid in-sentence terms.
+        """
+        if not term.word_boundary:
+            return False
+        return not cls._contains_cjk(term.source)
     
     # ==================== Import/Export ====================
     

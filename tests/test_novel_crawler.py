@@ -145,3 +145,16 @@ def test_build_full_text_renders_chapter_headers():
     assert "Alpha" in full_text
     assert "=== Chapter 2 ===" in full_text
     assert "Beta" in full_text
+
+
+@pytest.mark.asyncio
+async def test_discover_chapter_count_returns_discovered_length():
+    service = CrawlService()
+    crawler = FakeCrawler()
+
+    count = await service.discover_chapter_count(
+        crawler=crawler,
+        url="https://example.com/novel",
+    )
+
+    assert count == 2
