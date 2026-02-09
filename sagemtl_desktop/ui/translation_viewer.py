@@ -10,13 +10,13 @@ Features:
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
-    QTextEdit, QPushButton, QLabel, QComboBox, QProgressBar,
+    QTextEdit, QLabel, QProgressBar,
     QFrame, QScrollArea, QMessageBox, QToolBar, QStatusBar
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QTextCharFormat, QColor, QFont, QAction, QTextCursor
 import re
-from typing import List, Optional, Tuple
+from typing import List
 
 from sagemtl_desktop.core.glossary_manager import GlossaryManager, GlossaryTerm
 
@@ -166,7 +166,7 @@ class GlossaryHighlighter:
                         cursor.setCharFormat(highlight_format)
             finally:
                 cursor.endEditBlock()
-        except Exception as e:
+        except Exception:
             # Silently ignore highlighting errors to prevent crashes
             pass
 

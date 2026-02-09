@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTextEdit, QDialogButtonBox,
     QFormLayout, QLineEdit, QSpinBox, QTableWidget,
     QTableWidgetItem, QAbstractItemView, QFrame,
-    QRadioButton, QButtonGroup, QMessageBox
+    QRadioButton, QButtonGroup
 )
 from PySide6.QtCore import Qt
 
@@ -84,9 +84,9 @@ class CrawlOptionsDialog(QDialog):
 
         # Note
         note = QLabel(
-            "Note: This will use lightnovel-crawler to download chapters from the novel site.\n"
-            "All chapters will be automatically detected and downloaded.\n"
-            "The process may take several minutes depending on the number of chapters."
+            "Note: SageMTL first discovers chapters, then lets you choose all, first N, or a custom range.\n"
+            "Downloads use the crawler wrapper with generic fallback for unsupported sites.\n"
+            "The process may take several minutes depending on chapter count and site speed."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color: gray; font-style: italic; padding: 8px;")
@@ -150,7 +150,7 @@ class AboutDialog(QDialog):
             "<h3>Features:</h3>"
             "<ul>"
             "<li>Offline translation with Argos Translate</li>"
-            "<li>Novel crawling with SageCrawler</li>"
+            "<li>Novel crawling with lightnovel-crawler and generic fallback</li>"
             "<li>Custom glossary support (CSV)</li>"
             "<li>EPUB extraction and export</li>"
             "<li>Side-by-side preview</li>"

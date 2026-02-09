@@ -6,13 +6,13 @@ import sys
 import warnings
 from pathlib import Path
 
-# Suppress deprecated pkg_resources warning from ctranslate2
-warnings.filterwarnings('ignore', message='.*pkg_resources is deprecated.*')
-
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
 
 from .ui.main_window import MainWindow
+
+# Suppress deprecated pkg_resources warning from ctranslate2
+warnings.filterwarnings('ignore', message='.*pkg_resources is deprecated.*')
 
 
 def main():

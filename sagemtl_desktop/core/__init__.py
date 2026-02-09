@@ -13,6 +13,7 @@ from .epub_writer import EPUBWriter
 from .exporter import Exporter
 from .import_manager import ImportManager
 from .structured_logger import StructuredLogger, get_logger
+from .crawl_service import CrawlService
 
 __all__ = [
     "Job",
@@ -30,4 +31,5 @@ __all__ = [
     "ImportManager",
     "StructuredLogger",
     "get_logger",
+    "CrawlService",
 ]

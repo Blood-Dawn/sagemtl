@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+# ruff: noqa: F821
 """
 PyInstaller spec file for SageMTL Desktop Application.
 
@@ -7,7 +8,6 @@ Build with: pyinstaller pyinstaller-desktop.spec
 This will create a one-folder distribution in dist/SageMTL/
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -36,6 +36,10 @@ if argos_packages_path and argos_packages_path.exists():
 resources_dir = Path('sagemtl_desktop/resources')
 if resources_dir.exists():
     datas.append((str(resources_dir), 'resources'))
+
+# Resolve icon path deterministically; avoid referencing a missing file.
+windows_icon = Path('sagemtl_desktop/resources/icon.ico')
+icon_path = str(windows_icon) if is_windows and windows_icon.exists() else None
 
 a = Analysis(
     ['sagemtl_desktop/main.py'],
@@ -93,7 +97,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='sagemtl_desktop/resources/icons/app.ico' if is_windows else None,
+    icon=icon_path,
 )
 
 coll = COLLECT(

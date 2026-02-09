@@ -159,12 +159,12 @@ class PoliteFetcher:
                         continue
                     raise
 
-                except httpx.TimeoutException as e:
+                except httpx.TimeoutException:
                     if attempt < max_retries - 1:
                         continue
                     raise
 
-                except httpx.RequestError as e:
+                except httpx.RequestError:
                     if attempt < max_retries - 1:
                         continue
                     raise

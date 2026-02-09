@@ -196,7 +196,7 @@ class Translator:
             try:
                 import argostranslate.package
                 available = [(p.from_code, p.to_code) for p in argostranslate.package.get_installed_packages()]
-            except:
+            except Exception:
                 available = []
             raise MissingTranslatorError(source_lang, target_lang, available)
 
@@ -330,7 +330,7 @@ class Translator:
             print(f"Downloading {package_to_install.from_name} → {package_to_install.to_name}...")
             download_path = package_to_install.download()
 
-            print(f"Installing...")
+            print("Installing...")
             argostranslate.package.install_from_path(download_path)
 
             # Reload installed languages

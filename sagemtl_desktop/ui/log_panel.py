@@ -6,9 +6,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
     QLabel, QPushButton, QComboBox
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QTextCursor, QColor, QTextCharFormat, QBrush
-from datetime import datetime
 
 
 class LogPanel(QWidget):

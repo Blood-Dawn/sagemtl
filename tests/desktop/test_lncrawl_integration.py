@@ -91,7 +91,7 @@ class TestLightNovelCrawlerIntegration:
     @pytest.mark.asyncio
     async def test_02_select_random_sites(self, crawler, test_novel_name):
         """Test selecting random sites from search results"""
-        print(f"\n[TEST] Selecting random sites from search results")
+        print("\n[TEST] Selecting random sites from search results")
         
         # Search first
         search_results = await crawler.search_novel_by_name(test_novel_name)
@@ -115,7 +115,7 @@ class TestLightNovelCrawlerIntegration:
     @pytest.mark.asyncio
     async def test_03_download_first_10_chapters(self, crawler, test_novel_name):
         """Test downloading first 10 chapters from a novel"""
-        print(f"\n[TEST] Downloading first 10 chapters")
+        print("\n[TEST] Downloading first 10 chapters")
         
         # Search and get first result
         search_results = await crawler.search_novel_by_name(test_novel_name)
@@ -161,7 +161,7 @@ class TestLightNovelCrawlerIntegration:
     @pytest.mark.asyncio
     async def test_04_extract_first_chapter(self, crawler, test_novel_name):
         """Test extracting and verifying first chapter content"""
-        print(f"\n[TEST] Extracting first chapter")
+        print("\n[TEST] Extracting first chapter")
         
         # Download novel first
         search_results = await crawler.search_novel_by_name(test_novel_name)
@@ -186,7 +186,7 @@ class TestLightNovelCrawlerIntegration:
         
         # Display first 500 characters as preview
         preview = first_chapter.content[:500].strip()
-        print(f"\n  Preview (first 500 chars):")
+        print("\n  Preview (first 500 chars):")
         print(f"  {'-' * 60}")
         for line in preview.split('\n')[:10]:  # First 10 lines
             print(f"  {line}")
@@ -199,7 +199,7 @@ class TestLightNovelCrawlerIntegration:
     @pytest.mark.asyncio
     async def test_05_verify_all_chapters(self, crawler, test_novel_name):
         """Test that all downloaded chapters have valid content"""
-        print(f"\n[TEST] Verifying all chapter content")
+        print("\n[TEST] Verifying all chapter content")
         
         # Download novel
         search_results = await crawler.search_novel_by_name(test_novel_name)
@@ -222,7 +222,7 @@ class TestLightNovelCrawlerIntegration:
     @pytest.mark.asyncio
     async def test_06_full_workflow(self, crawler, test_novel_name):
         """Test complete workflow: search -> select -> download -> extract"""
-        print(f"\n[TEST] Running complete workflow test")
+        print("\n[TEST] Running complete workflow test")
         
         # Step 1: Search
         print("\n  Step 1: Searching for novel...")
@@ -268,7 +268,7 @@ class TestLightNovelCrawlerIntegration:
             assert len(chapter.content) > 0, f"Chapter {i} has no content"
         print(f"    ✓ All {len(novel_data.chapters)} chapters verified")
         
-        print(f"\n  ✓ COMPLETE WORKFLOW TEST PASSED")
+        print("\n  ✓ COMPLETE WORKFLOW TEST PASSED")
         
         return {
             'search_results_count': len(search_results),
@@ -282,7 +282,7 @@ class TestLightNovelCrawlerIntegration:
 
     def test_07_url_detection(self, crawler):
         """Test URL vs name detection"""
-        print(f"\n[TEST] Testing URL detection")
+        print("\n[TEST] Testing URL detection")
         
         # Test URLs
         urls = [
@@ -309,7 +309,7 @@ class TestLightNovelCrawlerIntegration:
     @pytest.mark.asyncio
     async def test_08_progress_callbacks(self, crawler, test_novel_name):
         """Test that progress callbacks are called during operations"""
-        print(f"\n[TEST] Testing progress callbacks")
+        print("\n[TEST] Testing progress callbacks")
         
         callback_data = {
             'search_calls': 0,
@@ -338,7 +338,7 @@ class TestLightNovelCrawlerIntegration:
         
         print("  Testing download progress callbacks...")
         selected = search_results[0]
-        novel_data = await crawler.fetch_novel(
+        await crawler.fetch_novel(
             selected['url'],
             download_progress,
             max_chapters=10

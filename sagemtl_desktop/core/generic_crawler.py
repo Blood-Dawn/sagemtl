@@ -6,6 +6,8 @@ from any website using common HTML patterns and heuristics.
 """
 
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 import httpx
@@ -87,7 +89,7 @@ class GenericNovelCrawler:
         return title, author, chapter_links
     
     def fetch_chapters(self, chapter_links: List[tuple], title: str, author: str,
-                       progress_callback=None) -> CrawledNovel:
+                       progress_callback=None, max_workers: int = 4) -> CrawledNovel:
         """
         Fetch content for specified chapters.
         
@@ -108,33 +110,65 @@ class GenericNovelCrawler:
         if progress_callback:
             progress_callback(0, 100, f"Downloading {len(chapter_links)} chapters...")
         
-        # Download each chapter
-        chapters = []
-        for idx, (chapter_url, chapter_title) in enumerate(chapter_links, 1):
-            try:
-                if progress_callback:
-                    percent = int((idx / len(chapter_links)) * 95)
-                    progress_callback(percent, 100, f"Downloading chapter {idx}/{len(chapter_links)}...")
-                
-                content = self._fetch_chapter_content(chapter_url)
-                
-                chapters.append(CrawledChapter(
-                    title=chapter_title or f"Chapter {idx}",
-                    content=content,
-                    chapter_number=idx,
-                    url=chapter_url
-                ))
-            except Exception as e:
-                # Log but continue with other chapters
-                print(f"Warning: Failed to download chapter {idx} ({chapter_url}): {e}")
-        
+        worker_count = max(1, min(max_workers, len(chapter_links)))
+        if progress_callback:
+            progress_callback(
+                0,
+                100,
+                f"Downloading chapters with {worker_count} worker(s)..."
+            )
+
+        chapters: List[Optional[CrawledChapter]] = [None] * len(chapter_links)
+        completed_count = 0
+        completed_lock = threading.Lock()
+
+        def download_one(index: int, chapter_url: str, chapter_title: str):
+            content = self._fetch_chapter_content(chapter_url)
+            return index, CrawledChapter(
+                title=chapter_title or f"Chapter {index + 1}",
+                content=content,
+                chapter_number=index + 1,
+                url=chapter_url
+            )
+
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            future_map = {
+                executor.submit(download_one, idx, chapter_url, chapter_title): (idx, chapter_url)
+                for idx, (chapter_url, chapter_title) in enumerate(chapter_links)
+            }
+
+            for future in as_completed(future_map):
+                idx, chapter_url = future_map[future]
+                try:
+                    chapter_idx, chapter = future.result()
+                    chapters[chapter_idx] = chapter
+                except Exception as e:
+                    # Log but continue with other chapters
+                    print(
+                        f"Warning: Failed to download chapter {idx + 1} ({chapter_url}): {e}"
+                    )
+                finally:
+                    with completed_lock:
+                        completed_count += 1
+                        if progress_callback:
+                            percent = int((completed_count / len(chapter_links)) * 95)
+                            progress_callback(
+                                percent,
+                                100,
+                                f"Downloaded {completed_count}/{len(chapter_links)} chapters..."
+                            )
+
+        ordered_chapters = [chapter for chapter in chapters if chapter is not None]
+        for idx, chapter in enumerate(ordered_chapters, 1):
+            chapter.chapter_number = idx
+
         if progress_callback:
             progress_callback(100, 100, "Download complete!")
-        
+
         return CrawledNovel(
             title=title,
             author=author,
-            chapters=chapters
+            chapters=ordered_chapters
         )
     
     def fetch_novel(self, progress_callback=None, max_chapters: Optional[int] = None) -> CrawledNovel:

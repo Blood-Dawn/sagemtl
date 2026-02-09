@@ -1,9 +1,9 @@
 """
 Abstraction layer for different crawler implementations.
-Allows seamless switching between SageCrawler and lightnovel-crawler.
+Provides a stable contract for crawler wrappers used by the desktop app.
 """
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
+from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 
@@ -48,7 +48,12 @@ class CrawlerInterface(ABC):
     """
 
     @abstractmethod
-    async def fetch_novel(self, url: str, progress_callback=None) -> CrawledNovel:
+    async def fetch_novel(
+        self,
+        url: str,
+        progress_callback=None,
+        max_chapters: Optional[int] = None
+    ) -> CrawledNovel:
         """
         Fetch a complete novel from the given URL.
 
@@ -56,6 +61,7 @@ class CrawlerInterface(ABC):
             url: The URL to the novel or first chapter
             progress_callback: Optional function to call with progress updates
                              Should accept (current, total, message) parameters
+            max_chapters: Optional chapter cap used by UI/tests for bounded downloads
 
         Returns:
             CrawledNovel object with all chapters
@@ -89,5 +95,48 @@ class CrawlerInterface(ABC):
 
         Returns:
             List of domain names (e.g., ['wuxiaworld.com', 'royalroad.com'])
+        """
+        pass
+
+    @abstractmethod
+    async def discover_chapters(
+        self,
+        url: str,
+        progress_callback=None
+    ) -> Tuple[str, Optional[str], List[Tuple[str, str]]]:
+        """
+        Discover chapter links for a novel URL.
+
+        Args:
+            url: Novel URL to inspect
+            progress_callback: Optional function(current, total, message)
+
+        Returns:
+            Tuple of (title, author, chapter_links) where chapter_links is
+            a list of (url, title) tuples.
+        """
+        pass
+
+    @abstractmethod
+    async def fetch_selected_chapters(
+        self,
+        url: str,
+        title: str,
+        author: Optional[str],
+        selected_chapters: List[Tuple[str, str]],
+        progress_callback=None
+    ) -> CrawledNovel:
+        """
+        Download only a selected set of chapter links for a novel.
+
+        Args:
+            url: Source novel URL
+            title: Novel title
+            author: Novel author (if available)
+            selected_chapters: List of (chapter_url, chapter_title)
+            progress_callback: Optional function(current, total, message)
+
+        Returns:
+            CrawledNovel with downloaded chapter content.
         """
         pass

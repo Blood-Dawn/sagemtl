@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple
 from datetime import datetime
 import html
 import re
+import importlib.util
 
 
 class EPUBWriter:
@@ -18,10 +19,9 @@ class EPUBWriter:
 
     def _check_ebooklib(self):
         """Check if ebooklib is available"""
-        try:
-            import ebooklib
+        if importlib.util.find_spec("ebooklib") is not None:
             self._epub_available = True
-        except ImportError:
+        else:
             print("Warning: ebooklib not installed. EPUB export will not work.")
             print("Install with: pip install ebooklib")
 

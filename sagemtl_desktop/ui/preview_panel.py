@@ -3,8 +3,8 @@ Side-by-side text preview panel with glossary integration.
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
-    QLabel, QSplitter, QMenu
+    QWidget, QVBoxLayout, QTextEdit,
+    QLabel, QSplitter
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction

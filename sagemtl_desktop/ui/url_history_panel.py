@@ -5,7 +5,7 @@ URL History Panel - Shows search/fetch history and allows re-fetching.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QListWidget, QListWidgetItem,
-    QFrame, QScrollArea, QMenu
+    QFrame, QMenu
 )
 from PySide6.QtCore import Signal, Qt, QSettings
 from PySide6.QtGui import QAction

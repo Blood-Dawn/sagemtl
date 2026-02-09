@@ -10,7 +10,7 @@ import json
 import tempfile
 import shutil
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from sagemtl_desktop.core.crawler_interface import (
     CrawlerInterface,
     CrawledNovel,
@@ -24,7 +24,6 @@ from sagemtl_desktop.core.generic_crawler import GenericNovelCrawler
 LIGHTNOVEL_CRAWLER_AVAILABLE = False
 try:
     from lncrawl.core.app import App as LNCrawlApp
-    from lncrawl.core.arguments import get_args
     from lncrawl.core.exeptions import LNException
     LIGHTNOVEL_CRAWLER_AVAILABLE = True
 except ImportError as e:
@@ -47,7 +46,7 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
     to capture the content in memory for processing.
     """
 
-    def __init__(self):
+    def __init__(self, chapter_download_workers: int = 4):
         if not LIGHTNOVEL_CRAWLER_AVAILABLE:
             raise ImportError(
                 "lightnovel-crawler is not installed. "
@@ -58,6 +57,7 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         # then read it back into memory. This is necessary because lightnovel-crawler
         # was designed to save files rather than return data in memory.
         self.temp_dir = None
+        self.chapter_download_workers = max(1, chapter_download_workers)
 
     @staticmethod
     def is_url(input_str: str) -> bool:
@@ -117,6 +117,58 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             # Clean up temporary files
             if self.temp_dir and Path(self.temp_dir).exists():
                 shutil.rmtree(self.temp_dir)
+
+    async def discover_chapters(
+        self,
+        url: str,
+        progress_callback=None
+    ) -> Tuple[str, Optional[str], List[Tuple[str, str]]]:
+        """
+        Discover chapter links for a novel URL.
+
+        Uses the generic crawler path because lncrawl does not expose a stable
+        chapter-discovery API suitable for interactive chapter selection.
+        """
+        def run_discovery():
+            crawler = GenericNovelCrawler(url)
+            try:
+                return crawler.discover_chapters(progress_callback)
+            finally:
+                crawler.close()
+
+        return await asyncio.get_event_loop().run_in_executor(None, run_discovery)
+
+    async def fetch_selected_chapters(
+        self,
+        url: str,
+        title: str,
+        author: Optional[str],
+        selected_chapters: List[Tuple[str, str]],
+        progress_callback=None
+    ) -> CrawledNovel:
+        """
+        Download a user-selected subset of chapters.
+
+        This path uses the generic crawler so chapter selection/ranges work
+        reliably even when lncrawl only supports full-novel downloads.
+        """
+        if not selected_chapters:
+            raise ValueError("No chapters were selected for download")
+
+        def run_fetch():
+            crawler = GenericNovelCrawler(url)
+            try:
+                return crawler.fetch_chapters(
+                    selected_chapters,
+                    title=title,
+                    author=author or "Unknown",
+                    progress_callback=progress_callback,
+                    max_workers=self.chapter_download_workers
+                )
+            finally:
+                crawler.close()
+
+        return await asyncio.get_event_loop().run_in_executor(None, run_fetch)
     
     async def _fetch_with_generic_crawler(self, url: str, progress_callback, max_chapters: int = None) -> CrawledNovel:
         """

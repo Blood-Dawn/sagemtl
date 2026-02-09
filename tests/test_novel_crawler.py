@@ -1,235 +1,147 @@
-"""Tests for novel crawler with pattern detection."""
+"""Regression tests for desktop crawl orchestration logic."""
 
 from __future__ import annotations
 
-from pathlib import Path
-from tempfile import TemporaryDirectory
+from typing import List, Optional, Tuple
 
 import pytest
 
-# Skip this module: SageCrawler removed; app now uses lightnovel-crawler exclusively.
-pytest.skip("SageCrawler deprecated; using lncrawl-only crawler", allow_module_level=True)
-
-from sagemtl.crawl.novel_crawler import NovelCrawler, ChapterInfo
+from sagemtl_desktop.core.crawl_service import CrawlService
+from sagemtl_desktop.core.crawler_interface import CrawledChapter, CrawledNovel, CrawlerInterface
 
 
-@pytest.fixture
-def crawler():
-    """Create a NovelCrawler instance."""
-    return NovelCrawler(max_concurrent=1, timeout=10.0)
+class FakeCrawler(CrawlerInterface):
+    """Test double implementing crawler interface for flow assertions."""
+
+    def __init__(self):
+        self.fetch_novel_calls: List[Tuple[str, Optional[int]]] = []
+        self.fetch_selected_calls: List[List[Tuple[str, str]]] = []
+
+    @staticmethod
+    def is_url(input_str: str) -> bool:
+        return input_str.startswith("http")
+
+    async def fetch_novel(self, url: str, progress_callback=None, max_chapters: Optional[int] = None) -> CrawledNovel:
+        self.fetch_novel_calls.append((url, max_chapters))
+        chapter_total = max_chapters or 3
+        chapters = [
+            CrawledChapter(title=f"Chapter {i}", content=f"Content {i}", chapter_number=i)
+            for i in range(1, chapter_total + 1)
+        ]
+        return CrawledNovel(title="Wrapper Path", author="Tester", chapters=chapters)
+
+    async def discover_chapters(
+        self,
+        url: str,
+        progress_callback=None
+    ) -> Tuple[str, Optional[str], List[Tuple[str, str]]]:
+        return (
+            "Demo Novel",
+            "Tester",
+            [("https://example.com/ch-1", "Chapter 1"), ("https://example.com/ch-2", "Chapter 2")]
+        )
+
+    async def fetch_selected_chapters(
+        self,
+        url: str,
+        title: str,
+        author: Optional[str],
+        selected_chapters: List[Tuple[str, str]],
+        progress_callback=None
+    ) -> CrawledNovel:
+        self.fetch_selected_calls.append(selected_chapters)
+        chapters = [
+            CrawledChapter(
+                title=chapter_title,
+                content=f"Selected from {chapter_url}",
+                chapter_number=idx
+            )
+            for idx, (chapter_url, chapter_title) in enumerate(selected_chapters, 1)
+        ]
+        return CrawledNovel(title=title, author=author, chapters=chapters)
+
+    def supports_url(self, url: str) -> bool:
+        return True
+
+    def get_supported_sites(self) -> List[str]:
+        return ["example.com"]
 
 
-def test_detect_chapter_pattern_dash(crawler):
-    """Test pattern detection for chapter-N URLs."""
-    url = "https://example.com/novel/chapter-1"
-    pattern = crawler.detect_chapter_pattern(url)
+@pytest.mark.asyncio
+async def test_download_strategy_uses_wrapper_fetch_for_all_chapters():
+    service = CrawlService()
+    crawler = FakeCrawler()
+    discovered = [(f"https://example.com/ch-{i}", f"Chapter {i}") for i in range(1, 6)]
 
-    assert pattern is not None
-    assert pattern["current_num"] == 1
-    assert "chapter-" in pattern["base_url"]
-
-
-def test_detect_chapter_pattern_slash_number(crawler):
-    """Test pattern detection for /N/ URLs."""
-    url = "https://example.com/novel/123/"
-    pattern = crawler.detect_chapter_pattern(url)
-
-    assert pattern is not None
-    assert pattern["current_num"] == 123
-
-
-def test_detect_chapter_pattern_html(crawler):
-    """Test pattern detection for N.html URLs."""
-    url = "https://example.com/novel/45.html"
-    pattern = crawler.detect_chapter_pattern(url)
-
-    assert pattern is not None
-    assert pattern["current_num"] == 45
-    assert ".html" in pattern["pattern"]
-
-
-def test_detect_chapter_pattern_ch_prefix(crawler):
-    """Test pattern detection for ch-N URLs."""
-    url = "https://example.com/novel/ch7/index.html"
-    pattern = crawler.detect_chapter_pattern(url)
-
-    assert pattern is not None
-    assert pattern["current_num"] == 7
-
-
-def test_build_chapter_url(crawler):
-    """Test building chapter URLs from patterns."""
-    pattern = {
-        "base_url": "https://example.com/chapter-",
-        "pattern": "https://example.com/chapter-{num}",
-        "current_num": 1,
-        "suffix": "",
-    }
-
-    url = crawler.build_chapter_url(pattern, 5)
-    assert url == "https://example.com/chapter-5"
-
-
-def test_chapter_info_creation():
-    """Test ChapterInfo dataclass creation."""
-    chapter = ChapterInfo(
-        number=1,
-        title="Prologue",
-        url="https://example.com/ch1",
-        content="This is the beginning...",
-        word_count=4,
+    novel = await service.download_selected_chapters(
+        crawler=crawler,
+        url="https://example.com/novel",
+        title="Demo Novel",
+        author="Tester",
+        discovered_chapters=discovered,
+        selected_chapters=discovered,
     )
 
-    assert chapter.number == 1
-    assert chapter.title == "Prologue"
-    assert chapter.word_count == 4
+    assert len(novel.chapters) == 3  # Fake crawler default when max_chapters is None
+    assert crawler.fetch_novel_calls == [("https://example.com/novel", None)]
+    assert crawler.fetch_selected_calls == []
 
 
-def test_save_to_dataset():
-    """Test saving novel chapters to dataset."""
-    from sagemtl.crawl.novel_crawler import NovelInfo
+@pytest.mark.asyncio
+async def test_download_strategy_uses_wrapper_fetch_for_first_n():
+    service = CrawlService()
+    crawler = FakeCrawler()
+    discovered = [(f"https://example.com/ch-{i}", f"Chapter {i}") for i in range(1, 6)]
+    selected = discovered[:2]
 
-    chapters = [
-        ChapterInfo(
-            number=1,
-            title="Chapter 1",
-            url="https://example.com/ch1",
-            content="First chapter content.",
-            word_count=3,
-        ),
-        ChapterInfo(
-            number=2,
-            title="Chapter 2",
-            url="https://example.com/ch2",
-            content="Second chapter content.",
-            word_count=3,
-        ),
-    ]
-
-    novel = NovelInfo(
-        title="Test Novel",
-        author="Test Author",
-        description="A test novel",
-        cover_url="https://example.com/cover.jpg",
-        chapters=chapters,
-        source_url="https://example.com/ch1",
+    novel = await service.download_selected_chapters(
+        crawler=crawler,
+        url="https://example.com/novel",
+        title="Demo Novel",
+        author="Tester",
+        discovered_chapters=discovered,
+        selected_chapters=selected,
     )
 
-    with TemporaryDirectory() as tmpdir:
-        output_dir = Path(tmpdir)
-        crawler = NovelCrawler()
-
-        dataset_path = crawler.save_to_dataset(novel, output_dir, format="txt")
-
-        # Verify dataset structure
-        assert dataset_path.exists()
-        assert (dataset_path / "meta.json").exists()
-        assert (dataset_path / "files").exists()
-
-        # Verify metadata
-        import json
-
-        meta = json.loads((dataset_path / "meta.json").read_text())
-        assert meta["type"] == "novel"
-        assert meta["title"] == "Test Novel"
-        assert meta["author"] == "Test Author"
-        assert meta["chapter_count"] == 2
-        assert meta["total_words"] == 6
-
-        # Verify chapter files
-        ch1_file = dataset_path / "files" / "chapter-0001.txt"
-        ch2_file = dataset_path / "files" / "chapter-0002.txt"
-
-        assert ch1_file.exists()
-        assert ch2_file.exists()
-
-        # Verify content
-        ch1_content = ch1_file.read_text()
-        assert "Chapter 1" in ch1_content
-        assert "First chapter content" in ch1_content
+    assert len(novel.chapters) == 2
+    assert crawler.fetch_novel_calls == [("https://example.com/novel", 2)]
+    assert crawler.fetch_selected_calls == []
 
 
-def test_save_to_dataset_markdown():
-    """Test saving chapters in markdown format."""
-    from sagemtl.crawl.novel_crawler import NovelInfo
+@pytest.mark.asyncio
+async def test_download_strategy_uses_selected_download_for_custom_range():
+    service = CrawlService()
+    crawler = FakeCrawler()
+    discovered = [(f"https://example.com/ch-{i}", f"Chapter {i}") for i in range(1, 7)]
+    selected = discovered[2:4]
 
-    chapters = [
-        ChapterInfo(
-            number=1,
-            title="Chapter 1",
-            url="https://example.com/ch1",
-            content="Content here.",
-            word_count=2,
-        ),
-    ]
-
-    novel = NovelInfo(
-        title="Test Novel",
-        author=None,
-        description=None,
-        cover_url=None,
-        chapters=chapters,
-        source_url="https://example.com",
+    novel = await service.download_selected_chapters(
+        crawler=crawler,
+        url="https://example.com/novel",
+        title="Demo Novel",
+        author="Tester",
+        discovered_chapters=discovered,
+        selected_chapters=selected,
     )
 
-    with TemporaryDirectory() as tmpdir:
-        output_dir = Path(tmpdir)
-        crawler = NovelCrawler()
-
-        dataset_path = crawler.save_to_dataset(novel, output_dir, format="md")
-
-        ch_file = dataset_path / "files" / "chapter-0001.md"
-        assert ch_file.exists()
-
-        content = ch_file.read_text()
-        assert "# Chapter 1" in content  # Markdown heading
+    assert len(novel.chapters) == 2
+    assert crawler.fetch_novel_calls == []
+    assert crawler.fetch_selected_calls == [selected]
 
 
-def test_save_to_dataset_jsonl():
-    """Test saving chapters in JSONL format."""
-    from sagemtl.crawl.novel_crawler import NovelInfo
-    import json
-
-    chapters = [
-        ChapterInfo(
-            number=1,
-            title="Chapter 1",
-            url="https://example.com/ch1",
-            content="Content here.",
-            word_count=2,
-        ),
-    ]
-
-    novel = NovelInfo(
-        title="Test Novel",
-        author=None,
-        description=None,
-        cover_url=None,
-        chapters=chapters,
-        source_url="https://example.com",
+def test_build_full_text_renders_chapter_headers():
+    service = CrawlService()
+    novel = CrawledNovel(
+        title="Demo",
+        chapters=[
+            CrawledChapter(title="Chapter 1", content="Alpha"),
+            CrawledChapter(title="Chapter 2", content="Beta"),
+        ],
     )
 
-    with TemporaryDirectory() as tmpdir:
-        output_dir = Path(tmpdir)
-        crawler = NovelCrawler()
+    full_text = service.build_full_text(novel)
 
-        dataset_path = crawler.save_to_dataset(novel, output_dir, format="jsonl")
-
-        ch_file = dataset_path / "files" / "chapter-0001.jsonl"
-        assert ch_file.exists()
-
-        content = json.loads(ch_file.read_text())
-        assert content["chapter"] == 1
-        assert content["title"] == "Chapter 1"
-        assert "url" in content
-
-
-def test_no_pattern_detection():
-    """Test behavior when pattern can't be detected."""
-    crawler = NovelCrawler()
-    url = "https://example.com/some/random/path/without/numbers"
-    pattern = crawler.detect_chapter_pattern(url)
-
-    assert pattern is None
-
-
+    assert "=== Chapter 1 ===" in full_text
+    assert "Alpha" in full_text
+    assert "=== Chapter 2 ===" in full_text
+    assert "Beta" in full_text

@@ -144,7 +144,7 @@ class HTMLCleaner:
         try:
             extractor.feed(html)
             return extractor.get_text()
-        except Exception as e:
+        except Exception:
             # Fallback: simple regex stripping
             text = re.sub(r'<[^>]+>', '', html)
             return ' '.join(text.split())

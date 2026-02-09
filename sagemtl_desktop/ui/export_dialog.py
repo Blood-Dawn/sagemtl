@@ -3,11 +3,9 @@ Export format selection dialog.
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QRadioButton, QButtonGroup,
+    QDialog, QVBoxLayout, QRadioButton, QButtonGroup,
     QLineEdit, QDialogButtonBox, QGroupBox, QFormLayout
 )
-from PySide6.QtCore import Qt
 
 
 class ExportDialog(QDialog):

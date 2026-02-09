@@ -5,9 +5,7 @@ Main application window.
 import contextlib
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QFileDialog, QMessageBox, QMenuBar, QMenu,
-    QComboBox, QLabel, QGroupBox, QPushButton, QDialog, QTextEdit
+    QMainWindow, QWidget, QVBoxLayout, QSplitter, QFileDialog, QMessageBox, QDialog, QTextEdit
 )
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QAction
@@ -18,7 +16,7 @@ from .controls_panel import ControlsPanel
 from .log_panel import LogPanel
 from .url_history_panel import URLHistoryPanel
 from .dialogs import (
-    ErrorDialog, CrawlOptionsDialog, AboutDialog, SearchResultsDialog,
+    ErrorDialog, AboutDialog, SearchResultsDialog,
     SearchProgressDialog, DownloadProgressDialog, ChapterSelectionDialog
 )
 from .export_dialog import ExportDialog
@@ -28,8 +26,8 @@ from .translation_viewer import TranslationViewerWindow
 from ..core import (
     JobManager, Translator, GlossaryProcessor,
     EPUBExtractor, Exporter,
-    Job, JobType, JobStatus, ProcessingOptions,
-    ImportManager, get_logger
+    JobType, JobStatus, ProcessingOptions,
+    ImportManager, CrawlService, get_logger
 )
 from ..core.novel_library import NovelLibrary
 from ..core.glossary_manager import GlossaryManager
@@ -59,6 +57,7 @@ class MainWindow(QMainWindow):
         self.epub_extractor = EPUBExtractor()
         self.exporter = Exporter()
         self.import_manager = ImportManager()
+        self.crawl_service = CrawlService()
         self.logger = get_logger()
         
         # Novel library for persistent storage
@@ -750,32 +749,38 @@ class MainWindow(QMainWindow):
             
             # Use QThread for discovery to keep UI responsive
             from PySide6.QtCore import QThread, Signal as QtSignal
-            
+            import asyncio
+             
             class DiscoveryWorker(QThread):
                 finished = QtSignal(str, str, list)  # title, author, chapters
                 error = QtSignal(str)
                 progress = QtSignal(str)
                 
-                def __init__(self, url):
+                def __init__(self, crawler, crawl_service, url):
                     super().__init__()
+                    self.crawler = crawler
+                    self.crawl_service = crawl_service
                     self.url = url
                 
                 def run(self):
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
                     try:
-                        # Always use GenericNovelCrawler for discovery (just finds links, doesn't download)
-                        from sagemtl_desktop.core.generic_crawler import GenericNovelCrawler
-                        
                         def progress_cb(current, total, message):
                             self.progress.emit(message)
-                        
-                        crawler = GenericNovelCrawler(self.url)
-                        try:
-                            title, author, chapters = crawler.discover_chapters(progress_cb)
-                            self.finished.emit(title, author or "Unknown", chapters)
-                        finally:
-                            crawler.close()
+
+                        title, author, chapters = loop.run_until_complete(
+                            self.crawl_service.discover_chapters(
+                                self.crawler,
+                                self.url,
+                                progress_callback=progress_cb
+                            )
+                        )
+                        self.finished.emit(title, author or "Unknown", chapters)
                     except Exception as e:
                         self.error.emit(str(e))
+                    finally:
+                        loop.close()
             
             # Store state for the callback
             discovery_state = {'worker': None, 'chapters': [], 'title': '', 'author': ''}
@@ -810,19 +815,30 @@ class MainWindow(QMainWindow):
                         # Proceed with download
                         self._download_selected_chapters(
                             url, title, author, 
-                            selected_chapters, options
+                            chapters,
+                            selected_chapters,
+                            options,
+                            selected_crawler
                         )
             
             # Start discovery worker
-            worker = DiscoveryWorker(url)
+            worker = DiscoveryWorker(selected_crawler, self.crawl_service, url)
             discovery_state['worker'] = worker
             worker.progress.connect(on_discovery_progress)
             worker.error.connect(on_discovery_error)
             worker.finished.connect(on_discovery_complete)
             worker.start()
 
-    def _download_selected_chapters(self, url: str, title: str, author: str, 
-                                    selected_chapters: list, options: dict):
+    def _download_selected_chapters(
+        self,
+        url: str,
+        title: str,
+        author: str,
+        discovered_chapters: list,
+        selected_chapters: list,
+        options: dict,
+        selected_crawler
+    ):
         """Download the selected chapters after user confirmation"""
         self.logger.info(
             f"Starting download of {len(selected_chapters)} chapters: {title}",
@@ -845,90 +861,77 @@ class MainWindow(QMainWindow):
         download_dialog.show()
         
         # Track chapter rendering for status updates
-        rendering_state = {'chapters_rendered': 0, 'total_chapters': len(selected_chapters)}
+        rendering_state = {
+            'chapters_rendered': 0,
+            'total_chapters': len(selected_chapters),
+            'latest_status': "Preparing download..."
+        }
 
         # Start crawl worker with async support
         def crawl_processor(job, progress_cb, log_cb):
+            import asyncio
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
-                from sagemtl_desktop.core.generic_crawler import GenericNovelCrawler
-                from sagemtl_desktop.core.crawler_interface import CrawledNovel, CrawledChapter
-                
                 log_cb("info", f"Downloading {len(selected_chapters)} chapters...")
-                
-                # Create crawler for downloading content
-                crawler = GenericNovelCrawler(url)
-                
-                # Download chapters
-                chapters = []
-                for idx, (chapter_url, chapter_title) in enumerate(selected_chapters, 1):
-                    try:
-                        percent = int((idx / len(selected_chapters)) * 90)
-                        progress_cb(percent)
-                        log_cb("info", f"Downloading chapter {idx}/{len(selected_chapters)}: {chapter_title[:50]}...")
-                        
-                        # Fetch actual content from the chapter URL
-                        content = crawler._fetch_chapter_content(chapter_url)
-                        
-                        chapters.append(CrawledChapter(
-                            title=chapter_title or f"Chapter {idx}",
-                            content=content,
-                            chapter_number=idx,
-                            url=chapter_url
-                        ))
-                        
-                        rendering_state['chapters_rendered'] = idx
-                    except Exception as e:
-                        log_cb("error", f"Failed to download chapter {idx}: {e}")
-                
-                # Create novel data
-                novel_data = CrawledNovel(
-                    title=title,
-                    author=author,
-                    chapters=chapters
+
+                def progress_wrapper(current, total, message):
+                    rendering_state['latest_status'] = message
+                    if total > 0:
+                        progress = (current / total) * 100
+                        progress_cb(progress)
+                    log_cb("info", message)
+
+                novel_data = loop.run_until_complete(
+                    self.crawl_service.download_selected_chapters(
+                        crawler=selected_crawler,
+                        url=url,
+                        title=title,
+                        author=author,
+                        discovered_chapters=discovered_chapters,
+                        selected_chapters=selected_chapters,
+                        progress_callback=progress_wrapper
+                    )
                 )
-                
+
+                if not novel_data.chapters:
+                    raise RuntimeError("Crawler returned no chapter content")
+
+                rendering_state['chapters_rendered'] = len(novel_data.chapters)
+                rendering_state['total_chapters'] = len(novel_data.chapters)
+
                 # Convert chapters to text format
-                log_cb("info", f"Processing {len(chapters)} chapters...")
-                
-                full_text_parts = []
-                for chapter in chapters:
-                    full_text_parts.append(f"=== {chapter.title} ===\n\n")
-                    full_text_parts.append(chapter.content)
-                    full_text_parts.append("\n\n")
-                
-                full_text = "".join(full_text_parts)
+                log_cb("info", f"Processing {len(novel_data.chapters)} chapters...")
+                full_text = self.crawl_service.build_full_text(novel_data)
 
                 # Store in job
                 job.original_text = full_text
-                job.metadata['chapter_count'] = len(chapters)
-                job.metadata['novel_title'] = title
-                job.metadata['author'] = author
+                job.metadata['chapter_count'] = len(novel_data.chapters)
+                job.metadata['novel_title'] = novel_data.title
+                job.metadata['author'] = novel_data.author
 
-                log_cb("info", f"Crawl completed: {len(chapters)} chapters")
+                log_cb("info", f"Crawl completed: {len(novel_data.chapters)} chapters")
 
                 # Save novel to persistent library
                 saved_novel = self.novel_library.add_novel_from_crawled(novel_data, url)
+                job.metadata['saved_novel_title'] = saved_novel.title
                 log_cb("info", f"Novel saved to library: {saved_novel.title}")
-                
-                # Update URL history with novel title
-                self.url_history_panel.update_history_title(url, saved_novel.title)
 
                 # Log successful crawl
                 self.logger.info(
-                    f"Crawl completed: {title}",
+                    f"Crawl completed: {saved_novel.title}",
                     stage="crawl",
                     job_id=job_id,
-                    chapter_count=len(chapters),
+                    chapter_count=len(novel_data.chapters),
                     content_length=len(full_text)
                 )
-                
-                # Close crawler
-                crawler.close()
             except Exception as e:
                 err_msg = f"Crawl failed: {str(e)}"
                 log_cb("error", err_msg)
-                with contextlib.suppress(Exception):
-                    crawler.close()
+                raise
+            finally:
+                loop.close()
 
         # Connect job manager's log signal to update download dialog
         def on_download_log(timestamp, log_job_id, level, message):
@@ -936,7 +939,10 @@ class MainWindow(QMainWindow):
                 download_dialog.add_log_line(message, level=level)
                 # Update status based on rendering progress
                 if rendering_state['total_chapters'] > 0:
-                    status_msg = f"Downloading: {rendering_state['chapters_rendered']}/{rendering_state['total_chapters']} chapters"
+                    status_msg = rendering_state.get('latest_status') or (
+                        f"Downloading: {rendering_state['chapters_rendered']}/"
+                        f"{rendering_state['total_chapters']} chapters"
+                    )
                     download_dialog.set_status(status_msg)
         
         self.job_manager.log_emitted.connect(on_download_log)
@@ -948,19 +954,33 @@ class MainWindow(QMainWindow):
             
             # Check if job is completed
             job = self.job_manager.get_job(completed_job_id)
-            if not job or job.status != JobStatus.COMPLETED:
+            if not job or job.status not in (JobStatus.COMPLETED, JobStatus.FAILED):
                 return
             
             with contextlib.suppress(Exception):
                 self.job_manager.job_updated.disconnect(on_download_completed)
                 self.job_manager.log_emitted.disconnect(on_download_log)
             
-            # Update final status
-            if rendering_state['total_chapters'] > 0:
-                download_dialog.set_status(f"Completed: {rendering_state['total_chapters']} chapters downloaded")
-            
-            # Refresh novel library in UI
-            self._refresh_novel_library()
+            if job.status == JobStatus.COMPLETED:
+                # Update final status
+                if rendering_state['total_chapters'] > 0:
+                    download_dialog.set_status(
+                        f"Completed: {rendering_state['total_chapters']} chapters downloaded"
+                    )
+
+                # Refresh novel library in UI
+                self._refresh_novel_library()
+
+                # Update URL history with resolved title from saved novel.
+                if saved_title := job.metadata.get('saved_novel_title'):
+                    self.url_history_panel.update_history_title(url, saved_title)
+            else:
+                download_dialog.set_status("Download failed")
+                QMessageBox.critical(
+                    self,
+                    "Download Failed",
+                    job.error_message or "Crawler job failed."
+                )
             
             # Close download dialog
             download_dialog.close()
@@ -1162,8 +1182,10 @@ class MainWindow(QMainWindow):
         for chapter in novel.chapters:
             original = chapter.content
             cleaned = self._apply_glossary_replacements(original, combined)
-            # Store cleaned version (could save to library if needed)
+            chapter.cleaned_content = cleaned
             total_replacements += sum(term.source in original for term in combined)
+
+        self.novel_library.update_novel(novel)
         
         self.logger.info(
             f"Applied glossary to {len(novel.chapters)} chapters ({total_replacements} replacements)",
@@ -1682,7 +1704,7 @@ class MainWindow(QMainWindow):
             if result['terms_skipped']:
                 msg += f"\nSkipped {result['terms_skipped']} duplicates"
             if result.get('errors'):
-                msg += f"\n\nWarnings:\n" + "\n".join(result['errors'][:5])
+                msg += "\n\nWarnings:\n" + "\n".join(result['errors'][:5])
             QMessageBox.information(self, "Import Complete", msg)
             self.logger.info(f"Imported {result['terms_added']} glossary terms from {file_path}", stage="glossary")
         else:

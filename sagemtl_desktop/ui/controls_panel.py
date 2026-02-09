@@ -3,7 +3,7 @@ Controls and settings panel - simplified to just URL fetch.
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
+    QWidget, QHBoxLayout,
     QPushButton, QLabel, QLineEdit
 )
 from PySide6.QtCore import Signal

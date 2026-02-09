@@ -6,15 +6,12 @@ Similar to lightnovel-crawler's output structure.
 """
 
 import json
-import os
-import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any
-from dataclasses import asdict
+from typing import List, Dict, Any
 
-from .novel_library import SavedNovel, SavedChapter
+from .novel_library import SavedNovel
 
 
 class NovelExporter:

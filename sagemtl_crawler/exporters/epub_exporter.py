@@ -57,8 +57,6 @@ class EPUBExporter:
         # Create chapters
         epub_chapters = []
         for chapter in chapters:
-            # Sanitize chapter title for filename
-            safe_title = "".join(c for c in chapter.ref.title if c.isalnum() or c in (' ', '-', '_')).strip()
             filename = f'chapter_{chapter.ref.index:05d}.xhtml'
 
             # Create chapter

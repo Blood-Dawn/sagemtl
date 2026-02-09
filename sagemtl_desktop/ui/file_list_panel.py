@@ -4,11 +4,11 @@ File/Job list panel widget with novel folder support.
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QListWidget, QListWidgetItem,
-    QLabel, QPushButton, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
-    QSplitter, QFrame, QMenu, QMessageBox, QInputDialog
+    QLabel, QTreeWidget, QTreeWidgetItem,
+    QMenu, QMessageBox, QInputDialog
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QBrush, QIcon, QFont, QAction
+from PySide6.QtGui import QColor, QBrush, QAction
 
 from ..core.models import Job, JobStatus
 
