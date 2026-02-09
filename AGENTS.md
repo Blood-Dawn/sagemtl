@@ -34,9 +34,13 @@ Do not create new standalone markdown docs unless explicitly requested.
 
 - The desktop app is orchestrated by `sagemtl_desktop/ui/main_window.py`.
 - Job execution uses `sagemtl_desktop/core/job_manager.py`.
-- Translation uses Argos through `sagemtl_desktop/core/translator.py`.
+- Translation uses `sagemtl_desktop/core/translator.py` with selectable backends (`argos`, optional `googletrans`, `echo`) and adaptive chunking.
 - Search, URL classification, and UI crawl execution route through `LightNovelCrawlerWrapper`.
 - `sagemtl_desktop/core/crawl_service.py` owns chapter discovery/download strategy selection.
+- Site-specific crawler policies are modeled in `sagemtl_desktop/core/crawl_settings.py`.
+- Search execution helpers live in `sagemtl_desktop/core/search_service.py`.
+- Shared desktop+CLI settings are bridged by `sagemtl_desktop/core/app_settings.py` and `sagemtl/config.py`.
+- UI localization and recovery hint logic live in `sagemtl_desktop/ui/i18n.py` and `sagemtl_desktop/ui/error_hints.py`.
 - `GenericNovelCrawler` is now used as a fallback path behind the wrapper/service.
 - `sagemtl_crawler/` exists but is not the main desktop runtime path.
 
@@ -95,6 +99,7 @@ Tests:
 ```powershell
 python -m pytest -m "not integration"
 python -m pytest tests/desktop/test_lncrawl_integration.py -m integration -v
+python -m sagemtl release-check
 ```
 
 Lint:

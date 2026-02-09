@@ -18,6 +18,7 @@ from sagemtl.crawl.http import fetch_text
 from sagemtl.crawl.pipeline import CrawlOptions, crawl_html
 from sagemtl.datasets.registry import DatasetFormat, get_dataset_registry
 from sagemtl.jobs.store import get_job_store
+from sagemtl.release_check import run_release_checklist
 from sagemtl.translate import TranslationRequest, get_translation_queue
 
 app = typer.Typer(help="SageMTL utilities", no_args_is_help=True)
@@ -384,6 +385,25 @@ def settings_set(
     new_settings = update_config({key: parsed})
     save_config(new_settings)
     typer.echo(f"Updated {key}")
+
+
+@app.command("release-check", help="Run automated release checklist")
+def release_check(
+    integration: Annotated[
+        bool,
+        typer.Option("--integration/--no-integration", help="Include optional integration checks"),
+    ] = False,
+    show_output: Annotated[
+        bool,
+        typer.Option("--show-output/--quiet-output", help="Show output for passing checks"),
+    ] = False,
+) -> None:
+    exit_code = run_release_checklist(
+        include_integration=integration,
+        show_output=show_output,
+    )
+    if exit_code != 0:
+        raise typer.Exit(exit_code)
 
 
 @app.command(help="Launch the FastAPI service")

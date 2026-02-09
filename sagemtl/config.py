@@ -66,6 +66,24 @@ class Settings(BaseModel):
     thread_count: int = Field(default_factory=_default_thread_count, ge=1)
     """Preferred thread/worker count for CPU heavy tasks."""
 
+    desktop_source_lang: str = "auto"
+    """Desktop default source language for translation jobs."""
+
+    desktop_target_lang: str = "en"
+    """Desktop default target language for translation jobs."""
+
+    desktop_glossary_path: str | None = None
+    """Desktop glossary CSV path loaded at startup."""
+
+    desktop_translation_backend: Literal["argos", "googletrans", "echo"] = "argos"
+    """Desktop translation backend selection."""
+
+    desktop_max_chunk_size: int = Field(default=900, ge=100, le=5000)
+    """Desktop translation chunk size in characters."""
+
+    desktop_ui_language: str = "en"
+    """Desktop UI language code."""
+
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     @property

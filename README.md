@@ -5,10 +5,19 @@ SageMTL is a desktop-first workflow for crawling web novels, translating them lo
 ## Current capabilities
 
 - Offline translation with Argos Translate language packs.
+- Optional translation backend selection (`argos`, optional `googletrans`, `echo`) for desktop jobs.
+- Translation memory cache for repeated chunk reuse during desktop translation jobs.
+- Adaptive chunking for large chapters with language-aware punctuation handling.
 - Novel search and crawl execution through `LightNovelCrawlerWrapper`.
+- Site-specific crawl profiles (delay, user-agent, retries, robots policy, worker count).
 - URL-based chapter discovery and selective download (all, first N, custom range) with generic fallback and bounded chapter download workers.
+- Resume support for partially downloaded novels by source URL.
+- Batch URL crawl queue from dialog input or multiline fetch input.
+- Optional direct EPUB export from crawler output during crawl.
 - Glossary workflows (global and per-novel) with CSV import/export.
 - EPUB import, TXT/EPUB export, and persistent local novel library.
+- UI language selection (English/Spanish) and actionable recovery hints for common errors.
+- Shared desktop/CLI settings model via `~/.sagemtl/config.toml`.
 - Batch job processing with progress and structured logs.
 
 ## Quick start (desktop app)
@@ -32,7 +41,13 @@ pip install -r requirements-desktop.txt
 python -c "import argostranslate.package as p; p.update_package_index(); pkg=[x for x in p.get_available_packages() if x.from_code=='zh' and x.to_code=='en'][0]; p.install_from_path(pkg.download())"
 ```
 
-4. Launch the desktop app.
+4. Optional: install `googletrans` backend support.
+
+```powershell
+pip install googletrans==4.0.0rc1
+```
+
+5. Launch the desktop app.
 
 ```powershell
 python -m sagemtl_desktop.main
@@ -43,6 +58,7 @@ python -m sagemtl_desktop.main
 - Show help: `python -m sagemtl --help`
 - Clean text: `python -m sagemtl clean --help`
 - Crawl HTML extraction helpers: `python -m sagemtl crawl --help`
+- Release checklist automation: `python -m sagemtl release-check`
 - TUI (early stage): `python -m sagemtl tui`
 
 ## Project structure

@@ -13,7 +13,7 @@ from sagemtl_desktop.core.lightnovel_crawler_wrapper import LightNovelCrawlerWra
 @pytest.mark.asyncio
 async def test_discover_chapters_delegates_to_generic(monkeypatch):
     class FakeGenericCrawler:
-        def __init__(self, base_url: str):
+        def __init__(self, base_url: str, crawl_settings=None):
             self.base_url = base_url
             self.closed = False
 
@@ -51,7 +51,7 @@ async def test_fetch_selected_chapters_uses_configured_worker_bound(monkeypatch)
     observed: dict[str, Optional[int]] = {"max_workers": None}
 
     class FakeGenericCrawler:
-        def __init__(self, base_url: str):
+        def __init__(self, base_url: str, crawl_settings=None):
             self.base_url = base_url
 
         def fetch_chapters(

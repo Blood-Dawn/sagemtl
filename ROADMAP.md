@@ -13,7 +13,7 @@ Status key:
 
 - Desktop app is functional for import, crawl, translate, and export.
 - Non-integration tests currently pass.
-- Integration coverage exists for wrapper search/download; non-integration regression coverage now includes crawl service strategy and wrapper-backed chapter flow.
+- Integration coverage exists for wrapper search/download; non-integration regression coverage now includes crawl settings/resume/batch/export plus translation backend/chunking/settings/release-check flows.
 - Documentation and implementation were previously out of sync; this roadmap replaces fragmented plans.
 
 ## 2. Completed work
@@ -54,36 +54,42 @@ Status key:
 
 ### P1 - Reliability and performance
 
-- [ ] (In progress) Refactor `MainWindow` into smaller controllers/services.
+- [x] Refactor `MainWindow` into smaller controllers/services.
 - [x] Add bounded concurrency for chapter downloads.
 - [x] Add regression tests for current production crawl flow.
 - [x] Remove low-risk lint debt (unused imports, trivial quality issues).
 
-Scope note (2026-02-09): crawl orchestration was extracted into `sagemtl_desktop/core/crawl_service.py`; broader `MainWindow` decomposition remains.
+Scope note (2026-02-09): crawl/search orchestration moved further into services (`crawl_service.py`, `search_service.py`) and profile-driven crawl configuration.
 
 ## 4. Feature roadmap
 
 ### Milestone A - Crawl quality and control
 
-- [ ] Site-specific crawl settings (delay, user-agent, retries, robots override policy).
-- [ ] Resume interrupted downloads for partially fetched novels.
-- [ ] Batch URL crawling from list/queue input.
-- [ ] Improve progress granularity and stage reporting.
-- [ ] Direct EPUB export from crawler output path (avoid intermediate conversions where possible).
+- [x] Site-specific crawl settings (delay, user-agent, retries, robots override policy).
+- [x] Resume interrupted downloads for partially fetched novels.
+- [x] Batch URL crawling from list/queue input.
+- [x] Improve progress granularity and stage reporting.
+- [x] Direct EPUB export from crawler output path (avoid intermediate conversions where possible).
+
+Implementation note (2026-02-09): batch crawling is available via File > Batch Crawl URLs and multiline URL paste in the fetch box.
 
 ### Milestone B - Translation quality and throughput
 
-- [ ] Translation memory/cache layer.
-- [ ] Optional additional translation backends beyond Argos.
-- [ ] Better chunking strategy for large chapters and language-specific punctuation.
-- [ ] Glossary performance improvements for large dictionaries.
+- [x] Translation memory/cache layer.
+- [x] Optional additional translation backends beyond Argos.
+- [x] Better chunking strategy for large chapters and language-specific punctuation.
+- [x] Glossary performance improvements for large dictionaries.
+
+Implementation note (2026-02-09): translation now supports backend selection (`argos`, optional `googletrans`, `echo`) with adaptive multilingual chunking and shared chunk-size controls.
 
 ### Milestone C - UX and product maturity
 
-- [ ] Multi-language UI support.
-- [ ] Stronger error surfaces with actionable recovery hints.
-- [ ] Unified settings model across desktop and CLI.
-- [ ] End-to-end release checklist automation.
+- [x] Multi-language UI support.
+- [x] Stronger error surfaces with actionable recovery hints.
+- [x] Unified settings model across desktop and CLI.
+- [x] End-to-end release checklist automation.
+
+Implementation note (2026-02-09): UI menu localization (English/Spanish), actionable recovery hints, shared desktop+CLI config bridge, and `python -m sagemtl release-check` automation are now in place.
 
 ## 5. Legacy items closed or deferred
 

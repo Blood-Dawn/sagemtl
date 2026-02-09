@@ -1,0 +1,92 @@
+"""Lightweight UI string catalog for the desktop app."""
+
+from __future__ import annotations
+
+
+_TRANSLATIONS = {
+    "en": {
+        "menu.file": "&File",
+        "menu.edit": "&Edit",
+        "menu.glossary": "&Glossary",
+        "menu.translation": "&Translation",
+        "menu.view": "&View",
+        "menu.help": "&Help",
+        "submenu.translation_backend": "🧠 Translation Backend",
+        "submenu.chunk_size": "🧩 Chunk Size",
+        "submenu.language_settings": "🌐 Language Settings",
+        "submenu.ui_language": "🗣 UI Language",
+        "action.import_files": "📁 &Import Files...",
+        "action.batch_crawl_urls": "🧾 Batch Crawl &URLs...",
+        "action.export_results": "💾 &Export Results...",
+        "action.export_novel_epub": "📚 Export &Novel as EPUB...",
+        "action.quit": "&Quit",
+        "action.clear_jobs": "🗑️ &Clear All Jobs",
+        "action.glossary_manager": "📋 &Glossary Manager...",
+        "action.load_glossary_csv": "📥 &Load Glossary CSV...",
+        "action.import_to_global": "📥 Import to Global...",
+        "action.export_glossary_csv": "📤 Export Glossary CSV...",
+        "action.apply_glossary_current": "✨ &Apply Glossary to Current Chapter",
+        "action.apply_glossary_all": "✨ Apply Glossary to All Chapters",
+        "action.start_processing": "▶ &Start Processing",
+        "action.source_auto": "Source: Auto-detect",
+        "action.source_chinese": "Source: Chinese",
+        "action.source_japanese": "Source: Japanese",
+        "action.source_korean": "Source: Korean",
+        "action.show_log_panel": "📋 Show &Log Panel",
+        "action.maximize_preview": "🔍 Maximize Preview",
+        "action.open_translation_viewer": "🌐 Open &Translation Viewer...",
+        "action.view_supported_sites": "🌐 &View Supported Sites...",
+        "action.about": "ℹ️ &About",
+        "action.ui_lang_english": "English",
+        "action.ui_lang_spanish": "Spanish",
+        "msg.ui_language_changed.title": "Language Updated",
+        "msg.ui_language_changed.body": "UI language changed to {language_name}. Menu labels were updated.",
+    },
+    "es": {
+        "menu.file": "&Archivo",
+        "menu.edit": "&Editar",
+        "menu.glossary": "&Glosario",
+        "menu.translation": "&Traduccion",
+        "menu.view": "&Vista",
+        "menu.help": "A&yuda",
+        "submenu.translation_backend": "🧠 Motor de traduccion",
+        "submenu.chunk_size": "🧩 Tamano de bloque",
+        "submenu.language_settings": "🌐 Idioma de traduccion",
+        "submenu.ui_language": "🗣 Idioma de interfaz",
+        "action.import_files": "📁 &Importar archivos...",
+        "action.batch_crawl_urls": "🧾 Rastreo por &lotes...",
+        "action.export_results": "💾 &Exportar resultados...",
+        "action.export_novel_epub": "📚 Exportar &novela como EPUB...",
+        "action.quit": "&Salir",
+        "action.clear_jobs": "🗑️ &Limpiar todos los trabajos",
+        "action.glossary_manager": "📋 &Gestor de glosario...",
+        "action.load_glossary_csv": "📥 &Cargar glosario CSV...",
+        "action.import_to_global": "📥 Importar a global...",
+        "action.export_glossary_csv": "📤 Exportar glosario CSV...",
+        "action.apply_glossary_current": "✨ &Aplicar glosario al capitulo actual",
+        "action.apply_glossary_all": "✨ Aplicar glosario a todos los capitulos",
+        "action.start_processing": "▶ &Iniciar procesamiento",
+        "action.source_auto": "Origen: Auto-detectar",
+        "action.source_chinese": "Origen: Chino",
+        "action.source_japanese": "Origen: Japones",
+        "action.source_korean": "Origen: Coreano",
+        "action.show_log_panel": "📋 Mostrar panel de &registro",
+        "action.maximize_preview": "🔍 Maximizar vista previa",
+        "action.open_translation_viewer": "🌐 Abrir visor de &traduccion...",
+        "action.view_supported_sites": "🌐 &Ver sitios compatibles...",
+        "action.about": "ℹ️ &Acerca de",
+        "action.ui_lang_english": "Ingles",
+        "action.ui_lang_spanish": "Espanol",
+        "msg.ui_language_changed.title": "Idioma actualizado",
+        "msg.ui_language_changed.body": "El idioma de la interfaz ahora es {language_name}. Se actualizaron los menus.",
+    },
+}
+
+
+def tr(language: str, key: str, **kwargs) -> str:
+    """Translate a UI key with English fallback."""
+    lang = language if language in _TRANSLATIONS else "en"
+    template = _TRANSLATIONS.get(lang, {}).get(key)
+    if template is None:
+        template = _TRANSLATIONS["en"].get(key, key)
+    return template.format(**kwargs) if kwargs else template

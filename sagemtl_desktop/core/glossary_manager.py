@@ -11,7 +11,7 @@ Inspired by WTR Labs approach:
 import json
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Pattern, Tuple
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
@@ -107,6 +107,7 @@ class GlossaryManager:
         self._global_terms: List[GlossaryTerm] = []
         self._novel_glossaries: Dict[str, NovelGlossary] = {}
         self._active_novel_id: Optional[str] = None
+        self._pattern_cache: Dict[Tuple[str, bool, bool], Pattern[str]] = {}
         
         # Load global glossary
         self._load_global()
@@ -143,6 +144,10 @@ class GlossaryManager:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(f"Error saving global glossary: {e}")
+
+    def _invalidate_pattern_cache(self):
+        """Clear cached regex patterns after glossary mutations."""
+        self._pattern_cache.clear()
     
     def get_global_terms(self) -> List[GlossaryTerm]:
         """Get all global glossary terms"""
@@ -162,6 +167,7 @@ class GlossaryManager:
         
         self._global_terms.append(term)
         self._sort_terms(self._global_terms)
+        self._invalidate_pattern_cache()
         self._save_global()
         return True
     
@@ -171,6 +177,7 @@ class GlossaryManager:
             if term.source == source:
                 self._global_terms[i] = updated_term
                 self._sort_terms(self._global_terms)
+                self._invalidate_pattern_cache()
                 self._save_global()
                 return True
         return False
@@ -180,6 +187,7 @@ class GlossaryManager:
         for i, term in enumerate(self._global_terms):
             if term.source == source:
                 del self._global_terms[i]
+                self._invalidate_pattern_cache()
                 self._save_global()
                 return True
         return False
@@ -269,6 +277,7 @@ class GlossaryManager:
         
         glossary.terms.append(term)
         self._sort_terms(glossary.terms)
+        self._invalidate_pattern_cache()
         self._save_novel_glossary(novel_id)
         return True
     
@@ -282,6 +291,7 @@ class GlossaryManager:
             if term.source == source:
                 glossary.terms[i] = updated_term
                 self._sort_terms(glossary.terms)
+                self._invalidate_pattern_cache()
                 self._save_novel_glossary(novel_id)
                 return True
         return False
@@ -295,6 +305,7 @@ class GlossaryManager:
         for i, term in enumerate(glossary.terms):
             if term.source == source:
                 del glossary.terms[i]
+                self._invalidate_pattern_cache()
                 self._save_novel_glossary(novel_id)
                 return True
         return False
@@ -364,18 +375,29 @@ class GlossaryManager:
     
     def _replace_term(self, text: str, term: GlossaryTerm) -> str:
         """Apply a single term replacement"""
+        pattern = self._get_compiled_pattern(term)
+        try:
+            return pattern.sub(term.target, text)
+        except re.error as e:
+            print(f"Regex error for term '{term.source}': {e}")
+            return text
+
+    def _get_compiled_pattern(self, term: GlossaryTerm) -> Pattern[str]:
+        """Get cached compiled regex pattern for a glossary term."""
+        cache_key = (term.source, term.case_sensitive, term.word_boundary)
+        cached = self._pattern_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         flags = 0 if term.case_sensitive else re.IGNORECASE
-        
         if term.word_boundary:
             pattern = r'\b' + re.escape(term.source) + r'\b'
         else:
             pattern = re.escape(term.source)
-        
-        try:
-            return re.sub(pattern, term.target, text, flags=flags)
-        except re.error as e:
-            print(f"Regex error for term '{term.source}': {e}")
-            return text
+
+        compiled = re.compile(pattern, flags=flags)
+        self._pattern_cache[cache_key] = compiled
+        return compiled
     
     # ==================== Import/Export ====================
     

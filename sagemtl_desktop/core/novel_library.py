@@ -258,6 +258,85 @@ class NovelLibrary:
             source_url=source_url,
             chapters=chapters
         )
+
+    @staticmethod
+    def _chapter_identity(url: str, title: str, chapter_number: Optional[int]) -> str:
+        """
+        Build a stable identity for chapter merge operations.
+        """
+        if url:
+            return f"url:{url.strip()}"
+        normalized_title = (title or "").strip().lower()
+        if chapter_number is not None:
+            return f"num:{chapter_number}:{normalized_title}"
+        return f"title:{normalized_title}"
+
+    def upsert_novel_from_crawled(
+        self,
+        crawled_novel,
+        source_url: str,
+        resume_existing: bool = False
+    ) -> SavedNovel:
+        """
+        Add or merge a crawled novel by source URL.
+
+        Args:
+            crawled_novel: CrawledNovel instance
+            source_url: The source URL
+            resume_existing: If True, merge chapters into existing novel if URL matches
+        """
+        existing = self.get_novel_by_url(source_url) if resume_existing else None
+        if not existing:
+            return self.add_novel_from_crawled(crawled_novel, source_url)
+
+        existing_index: Dict[str, SavedChapter] = {}
+        for chapter in existing.chapters:
+            identity = self._chapter_identity(chapter.url, chapter.title, chapter.chapter_number)
+            existing_index[identity] = chapter
+
+        for crawled_chapter in crawled_novel.chapters:
+            chapter_number = crawled_chapter.chapter_number
+            if chapter_number is None:
+                chapter_number = len(existing.chapters) + 1
+
+            identity = self._chapter_identity(
+                getattr(crawled_chapter, "url", ""),
+                crawled_chapter.title,
+                chapter_number
+            )
+
+            if identity in existing_index:
+                target = existing_index[identity]
+                if crawled_chapter.content:
+                    target.content = crawled_chapter.content
+                if getattr(crawled_chapter, "url", ""):
+                    target.url = crawled_chapter.url
+                if crawled_chapter.title:
+                    target.title = crawled_chapter.title
+                if chapter_number:
+                    target.chapter_number = chapter_number
+                continue
+
+            new_chapter = SavedChapter(
+                chapter_id=str(uuid.uuid4())[:8],
+                chapter_number=chapter_number,
+                title=crawled_chapter.title,
+                content=crawled_chapter.content,
+                url=getattr(crawled_chapter, "url", ""),
+            )
+            existing.chapters.append(new_chapter)
+            existing_index[identity] = new_chapter
+
+        existing.chapters.sort(
+            key=lambda chapter: (chapter.chapter_number or 0, (chapter.title or "").lower())
+        )
+        existing.title = crawled_novel.title or existing.title
+        existing.author = crawled_novel.author or existing.author
+        existing.total_chapters = len(existing.chapters)
+        existing.downloaded_chapters = len([chapter for chapter in existing.chapters if chapter.content.strip()])
+
+        self.update_novel(existing)
+        return existing
     
     def get_novel(self, novel_id: str) -> Optional[SavedNovel]:
         """Get a novel by ID"""

@@ -18,6 +18,7 @@ from sagemtl_desktop.core.crawler_interface import (
 )
 from sagemtl_desktop.core.supported_sites import get_supported_sites_formatted
 from sagemtl_desktop.core.generic_crawler import GenericNovelCrawler
+from sagemtl_desktop.core.crawl_settings import CrawlSettings
 
 # Try to import lightnovel-crawler, but don't fail if it's not installed
 # This allows your app to work even if users haven't installed the optional dependency
@@ -46,7 +47,11 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
     to capture the content in memory for processing.
     """
 
-    def __init__(self, chapter_download_workers: int = 4):
+    def __init__(
+        self,
+        chapter_download_workers: int = 4,
+        crawl_settings: Optional[CrawlSettings] = None
+    ):
         if not LIGHTNOVEL_CRAWLER_AVAILABLE:
             raise ImportError(
                 "lightnovel-crawler is not installed. "
@@ -57,7 +62,11 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         # then read it back into memory. This is necessary because lightnovel-crawler
         # was designed to save files rather than return data in memory.
         self.temp_dir = None
-        self.chapter_download_workers = max(1, chapter_download_workers)
+        self.crawl_settings = (crawl_settings or CrawlSettings()).normalize()
+        self.chapter_download_workers = max(
+            1,
+            chapter_download_workers or self.crawl_settings.chapter_download_workers
+        )
 
     @staticmethod
     def is_url(input_str: str) -> bool:
@@ -130,7 +139,7 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         chapter-discovery API suitable for interactive chapter selection.
         """
         def run_discovery():
-            crawler = GenericNovelCrawler(url)
+            crawler = GenericNovelCrawler(url, crawl_settings=self.crawl_settings)
             try:
                 return crawler.discover_chapters(progress_callback)
             finally:
@@ -156,7 +165,7 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
             raise ValueError("No chapters were selected for download")
 
         def run_fetch():
-            crawler = GenericNovelCrawler(url)
+            crawler = GenericNovelCrawler(url, crawl_settings=self.crawl_settings)
             try:
                 return crawler.fetch_chapters(
                     selected_chapters,
@@ -185,7 +194,7 @@ class LightNovelCrawlerWrapper(CrawlerInterface):
         try:
             # Run generic crawler in executor to avoid blocking
             def run_generic():
-                crawler = GenericNovelCrawler(url)
+                crawler = GenericNovelCrawler(url, crawl_settings=self.crawl_settings)
                 try:
                     return crawler.fetch_novel(progress_callback, max_chapters)
                 finally:

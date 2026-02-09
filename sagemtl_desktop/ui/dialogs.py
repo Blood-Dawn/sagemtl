@@ -7,21 +7,30 @@ from PySide6.QtWidgets import (
     QPushButton, QTextEdit, QDialogButtonBox,
     QFormLayout, QLineEdit, QSpinBox, QTableWidget,
     QTableWidgetItem, QAbstractItemView, QFrame,
-    QRadioButton, QButtonGroup
+    QRadioButton, QButtonGroup, QCheckBox, QDoubleSpinBox
 )
 from PySide6.QtCore import Qt
+
+from sagemtl_desktop.core.crawl_settings import CrawlSettings
 
 
 class ErrorDialog(QDialog):
     """Dialog for displaying detailed error information"""
 
-    def __init__(self, job_name: str, error_message: str, traceback: str, parent=None):
+    def __init__(
+        self,
+        job_name: str,
+        error_message: str,
+        traceback: str,
+        recovery_hints: list[str] | None = None,
+        parent=None
+    ):
         super().__init__(parent)
         self.setWindowTitle(f"Error: {job_name}")
         self.setMinimumSize(600, 400)
-        self._init_ui(job_name, error_message, traceback)
+        self._init_ui(job_name, error_message, traceback, recovery_hints or [])
 
-    def _init_ui(self, job_name: str, error_message: str, traceback: str):
+    def _init_ui(self, job_name: str, error_message: str, traceback: str, recovery_hints: list[str]):
         """Initialize UI"""
         layout = QVBoxLayout(self)
 
@@ -37,6 +46,15 @@ class ErrorDialog(QDialog):
         error_text.setWordWrap(True)
         error_text.setStyleSheet("color: red; padding: 8px; background: #ffe6e6;")
         layout.addWidget(error_text)
+
+        if recovery_hints:
+            hints_label = QLabel("Suggested Recovery Steps:")
+            layout.addWidget(hints_label)
+
+            hints_text = QLabel("\n".join(f"- {hint}" for hint in recovery_hints))
+            hints_text.setWordWrap(True)
+            hints_text.setStyleSheet("padding: 8px; background: #eef7ff; color: #1e3a5f;")
+            layout.addWidget(hints_text)
 
         # Traceback
         traceback_label = QLabel("Detailed Traceback:")
@@ -56,11 +74,17 @@ class ErrorDialog(QDialog):
 class CrawlOptionsDialog(QDialog):
     """Dialog for configuring novel crawl options"""
 
-    def __init__(self, url: str, parent=None):
+    def __init__(
+        self,
+        url: str,
+        initial_settings: CrawlSettings | None = None,
+        parent=None
+    ):
         super().__init__(parent)
         self.setWindowTitle("Crawl Novel Options")
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(560)
         self.url = url
+        self.initial_settings = (initial_settings or CrawlSettings()).normalize()
         self._init_ui()
 
     def _init_ui(self):
@@ -80,13 +104,51 @@ class CrawlOptionsDialog(QDialog):
         self.name_edit.setPlaceholderText("My Novel (optional)")
         form.addRow("Novel Name:", self.name_edit)
 
+        # Crawl policy controls
+        self.delay_spin = QDoubleSpinBox()
+        self.delay_spin.setDecimals(2)
+        self.delay_spin.setMinimum(0.0)
+        self.delay_spin.setMaximum(10.0)
+        self.delay_spin.setSingleStep(0.1)
+        self.delay_spin.setValue(self.initial_settings.request_delay_seconds)
+        self.delay_spin.setSuffix(" s")
+        form.addRow("Request Delay:", self.delay_spin)
+
+        self.retries_spin = QSpinBox()
+        self.retries_spin.setMinimum(0)
+        self.retries_spin.setMaximum(10)
+        self.retries_spin.setValue(self.initial_settings.max_retries)
+        form.addRow("Retries:", self.retries_spin)
+
+        self.workers_spin = QSpinBox()
+        self.workers_spin.setMinimum(1)
+        self.workers_spin.setMaximum(16)
+        self.workers_spin.setValue(self.initial_settings.chapter_download_workers)
+        form.addRow("Download Workers:", self.workers_spin)
+
+        self.user_agent_edit = QLineEdit(self.initial_settings.user_agent)
+        self.user_agent_edit.setPlaceholderText("User agent for crawl requests")
+        form.addRow("User-Agent:", self.user_agent_edit)
+
+        self.robots_override_check = QCheckBox("Ignore robots.txt restrictions")
+        self.robots_override_check.setChecked(self.initial_settings.ignore_robots_txt)
+        form.addRow("", self.robots_override_check)
+
+        self.resume_check = QCheckBox("Resume existing novel by source URL when available")
+        self.resume_check.setChecked(self.initial_settings.resume_existing)
+        form.addRow("", self.resume_check)
+
+        self.auto_export_epub_check = QCheckBox("Auto-export crawled chapters directly to EPUB")
+        self.auto_export_epub_check.setChecked(self.initial_settings.auto_export_epub)
+        form.addRow("", self.auto_export_epub_check)
+
         layout.addLayout(form)
 
         # Note
         note = QLabel(
-            "Note: SageMTL first discovers chapters, then lets you choose all, first N, or a custom range.\n"
-            "Downloads use the crawler wrapper with generic fallback for unsupported sites.\n"
-            "The process may take several minutes depending on chapter count and site speed."
+            "Note: Settings are saved per-site and reused for future crawls on the same domain.\n"
+            "SageMTL discovers chapters first, then lets you choose all, first N, or a custom range.\n"
+            "Downloads use wrapper-first execution with generic fallback when needed."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color: gray; font-style: italic; padding: 8px;")
@@ -110,6 +172,70 @@ class CrawlOptionsDialog(QDialog):
         return {
             "url": self.url,
             "novel_name": self.name_edit.text().strip(),
+            "crawl_settings": CrawlSettings(
+                request_delay_seconds=self.delay_spin.value(),
+                user_agent=self.user_agent_edit.text().strip(),
+                max_retries=self.retries_spin.value(),
+                ignore_robots_txt=self.robots_override_check.isChecked(),
+                chapter_download_workers=self.workers_spin.value(),
+                resume_existing=self.resume_check.isChecked(),
+                auto_export_epub=self.auto_export_epub_check.isChecked(),
+                epub_output_dir=self.initial_settings.epub_output_dir,
+            ).normalize().to_dict(),
+        }
+
+
+class BatchCrawlDialog(QDialog):
+    """Dialog for batch crawling URLs from a list/queue input."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Batch Crawl URLs")
+        self.setMinimumSize(700, 420)
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+
+        help_text = QLabel(
+            "Paste one URL per line (or comma/semicolon separated). "
+            "Batch crawl runs as a queued background job."
+        )
+        help_text.setWordWrap(True)
+        layout.addWidget(help_text)
+
+        self.urls_input = QTextEdit()
+        self.urls_input.setPlaceholderText(
+            "https://example.com/novel-1\nhttps://example.com/novel-2"
+        )
+        layout.addWidget(self.urls_input)
+
+        form = QFormLayout()
+
+        self.max_chapters_spin = QSpinBox()
+        self.max_chapters_spin.setMinimum(0)
+        self.max_chapters_spin.setMaximum(5000)
+        self.max_chapters_spin.setValue(0)
+        self.max_chapters_spin.setSpecialValueText("All chapters")
+        form.addRow("Per-URL Chapter Cap:", self.max_chapters_spin)
+
+        layout.addLayout(form)
+
+        note = QLabel(
+            "Tip: Use 0 for full novel crawl. Invalid lines are ignored automatically."
+        )
+        note.setStyleSheet("color: gray; font-style: italic;")
+        layout.addWidget(note)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def get_options(self) -> dict:
+        return {
+            "raw_urls": self.urls_input.toPlainText(),
+            "max_chapters": self.max_chapters_spin.value(),
         }
 
 

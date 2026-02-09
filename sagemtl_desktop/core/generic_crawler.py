@@ -7,13 +7,16 @@ from any website using common HTML patterns and heuristics.
 
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 import httpx
 from bs4 import BeautifulSoup
 
 from sagemtl_desktop.core.crawler_interface import CrawledNovel, CrawledChapter
+from sagemtl_desktop.core.crawl_settings import CrawlSettings, DEFAULT_CRAWL_USER_AGENT
 
 
 class GenericNovelCrawler:
@@ -24,22 +27,111 @@ class GenericNovelCrawler:
     making it work with sites not officially supported by lightnovel-crawler.
     """
     
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, crawl_settings: Optional[CrawlSettings] = None):
         """
         Initialize the generic crawler.
         
         Args:
             base_url: The URL of the novel's main page
+            crawl_settings: Runtime crawl settings for requests/policies
         """
         self.base_url = base_url
-        self.domain = urlparse(base_url).netloc
+        parsed_base = urlparse(base_url)
+        self.domain = parsed_base.netloc
+        self.base_scheme = parsed_base.scheme or "https"
+        self.settings = (crawl_settings or CrawlSettings()).normalize()
+        self._request_lock = threading.Lock()
+        self._last_request_at = 0.0
+        self._robots_checked = False
+        self._robots_parser: Optional[RobotFileParser] = None
         self.session = httpx.Client(
             follow_redirects=True,
             timeout=30.0,
             headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': self.settings.user_agent or DEFAULT_CRAWL_USER_AGENT
             }
         )
+
+    def _enforce_request_delay(self):
+        """Apply request throttling across all worker threads."""
+        delay = self.settings.request_delay_seconds
+        if delay <= 0:
+            return
+
+        with self._request_lock:
+            now = time.monotonic()
+            elapsed = now - self._last_request_at
+            if elapsed < delay:
+                time.sleep(delay - elapsed)
+                now = time.monotonic()
+            self._last_request_at = now
+
+    def _ensure_robots_parser(self):
+        """Load robots.txt once unless policy explicitly ignores it."""
+        if self.settings.ignore_robots_txt or self._robots_checked:
+            return
+
+        self._robots_checked = True
+        robots_url = f"{self.base_scheme}://{self.domain}/robots.txt"
+        parser = RobotFileParser()
+        parser.set_url(robots_url)
+        try:
+            parser.read()
+        except Exception:
+            self._robots_parser = None
+            return
+        self._robots_parser = parser
+
+    def _assert_robots_allowed(self, url: str):
+        """Reject disallowed URLs when robots override is disabled."""
+        if self.settings.ignore_robots_txt:
+            return
+        self._ensure_robots_parser()
+        if self._robots_parser and not self._robots_parser.can_fetch(self.settings.user_agent, url):
+            raise PermissionError(
+                f"Blocked by robots.txt policy for {url}. "
+                "Enable override in crawl settings to bypass."
+            )
+
+    def _request(self, method: str, url: str, allow_http_errors: bool = False, **kwargs) -> httpx.Response:
+        """
+        Send an HTTP request with delay/retries and optional robots policy.
+
+        Args:
+            method: HTTP method
+            url: Target URL
+            allow_http_errors: If True, do not raise on HTTP status codes
+            **kwargs: Passed to httpx.Client.request
+        """
+        self._assert_robots_allowed(url)
+
+        retries = self.settings.max_retries
+        last_exc = None
+        for attempt in range(retries + 1):
+            self._enforce_request_delay()
+            try:
+                response = self.session.request(method, url, **kwargs)
+                if allow_http_errors:
+                    return response
+                if response.status_code >= 500 and attempt < retries:
+                    continue
+                response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                if exc.response is not None and exc.response.status_code < 500:
+                    raise
+                if attempt >= retries:
+                    raise
+            except (httpx.TimeoutException, httpx.RequestError) as exc:
+                last_exc = exc
+                if attempt >= retries:
+                    raise
+
+        # Defensive fallback; loop should return or raise.
+        if last_exc:
+            raise last_exc
+        raise RuntimeError(f"Request failed without exception: {method} {url}")
     
     def discover_chapters(self, progress_callback=None) -> tuple:
         """
@@ -56,23 +148,26 @@ class GenericNovelCrawler:
             a list of (url, title) tuples
         """
         if progress_callback:
-            progress_callback(0, 100, "Fetching novel page...")
+            progress_callback(0, 100, "Stage 1/3: Fetching novel page...")
         
         # Get the main novel page
-        response = self.session.get(self.base_url)
-        response.raise_for_status()
+        response = self._request("GET", self.base_url)
         
         soup = BeautifulSoup(response.text, 'html.parser')
         
         if progress_callback:
-            progress_callback(20, 100, "Extracting novel information...")
+            progress_callback(20, 100, "Stage 2/3: Extracting novel metadata...")
         
         # Extract novel title and author
         title = self._extract_title(soup)
         author = self._extract_author(soup)
         
         if progress_callback:
-            progress_callback(40, 100, "Finding chapter links (this may take a while for large novels)...")
+            progress_callback(
+                40,
+                100,
+                "Stage 3/3: Finding chapter links (this may take a while for large novels)..."
+            )
         
         # Find all chapter links
         chapter_links = self._find_chapter_links(soup, self.base_url)
@@ -183,23 +278,22 @@ class GenericNovelCrawler:
             CrawledNovel with extracted content
         """
         if progress_callback:
-            progress_callback(0, 100, "Fetching novel page with generic crawler...")
+            progress_callback(0, 100, "Stage 1/4: Fetching novel page...")
         
         # Get the main novel page
-        response = self.session.get(self.base_url)
-        response.raise_for_status()
+        response = self._request("GET", self.base_url)
         
         soup = BeautifulSoup(response.text, 'html.parser')
         
         if progress_callback:
-            progress_callback(10, 100, "Extracting novel information...")
+            progress_callback(10, 100, "Stage 2/4: Extracting novel metadata...")
         
         # Extract novel title and author
         title = self._extract_title(soup)
         author = self._extract_author(soup)
         
         if progress_callback:
-            progress_callback(20, 100, "Finding chapter links...")
+            progress_callback(20, 100, "Stage 3/4: Discovering chapter links...")
         
         # Find all chapter links
         chapter_links = self._find_chapter_links(soup, self.base_url)
@@ -207,7 +301,11 @@ class GenericNovelCrawler:
         # If no chapter links found from page, try pattern-based discovery
         if not chapter_links:
             if progress_callback:
-                progress_callback(25, 100, "No chapter list found. Trying pattern-based discovery...")
+                progress_callback(
+                    25,
+                    100,
+                    "No chapter list found. Trying pattern-based discovery..."
+                )
             chapter_links = self._discover_chapters_by_pattern(self.base_url)
         
         # Only limit if explicitly requested (for testing)
@@ -221,36 +319,31 @@ class GenericNovelCrawler:
             )
         
         if progress_callback:
-            progress_callback(30, 100, f"Found {len(chapter_links)} chapters. Starting download...")
-        
-        # Download each chapter
-        chapters = []
-        for idx, (chapter_url, chapter_title) in enumerate(chapter_links, 1):
-            try:
-                if progress_callback:
-                    percent = 30 + int((idx / len(chapter_links)) * 60)
-                    progress_callback(percent, 100, f"Downloading chapter {idx}/{len(chapter_links)}...")
-                
-                content = self._fetch_chapter_content(chapter_url)
-                
-                chapters.append(CrawledChapter(
-                    title=chapter_title or f"Chapter {idx}",
-                    content=content,
-                    chapter_number=idx,
-                    url=chapter_url
-                ))
-            except Exception as e:
-                # Log but continue with other chapters
-                print(f"Warning: Failed to download chapter {idx} ({chapter_url}): {e}")
-        
+            progress_callback(
+                30,
+                100,
+                f"Stage 4/4: Found {len(chapter_links)} chapters. Starting download..."
+            )
+
+        def mapped_progress(current: int, total: int, message: str):
+            if not progress_callback:
+                return
+            # Map fetch_chapters progress (0-100) into the final stage range (30-100).
+            mapped = 30 + int((current / max(total, 1)) * 70)
+            progress_callback(mapped, 100, message)
+
+        novel = self.fetch_chapters(
+            chapter_links=chapter_links,
+            title=title,
+            author=author or "Unknown",
+            progress_callback=mapped_progress,
+            max_workers=self.settings.chapter_download_workers
+        )
+
         if progress_callback:
             progress_callback(100, 100, "Generic crawl complete!")
-        
-        return CrawledNovel(
-            title=title,
-            author=author,
-            chapters=chapters
-        )
+
+        return novel
     
     def _extract_title(self, soup: BeautifulSoup) -> str:
         """Extract novel title from the page."""
@@ -325,8 +418,7 @@ class GenericNovelCrawler:
             # Fetch page if not the first (soup already loaded for first page)
             if current_page != base_url:
                 try:
-                    response = self.session.get(current_page)
-                    response.raise_for_status()
+                    response = self._request("GET", current_page)
                     page_soup = BeautifulSoup(response.text, 'html.parser')
                 except Exception as e:
                     print(f"Failed to fetch pagination page {current_page}: {e}")
@@ -656,7 +748,7 @@ class GenericNovelCrawler:
             
             try:
                 # Quick HEAD request to check if URL exists
-                response = self.session.head(test_url, timeout=10)
+                response = self._request("HEAD", test_url, allow_http_errors=True, timeout=10)
                 
                 if response.status_code == 200:
                     chapter_links.append((test_url, f"Chapter {chapter_num}"))
@@ -665,7 +757,7 @@ class GenericNovelCrawler:
                     consecutive_failures += 1
                 else:
                     # Some sites don't support HEAD, try GET
-                    response = self.session.get(test_url, timeout=10)
+                    response = self._request("GET", test_url, allow_http_errors=True, timeout=10)
                     if response.status_code == 200:
                         chapter_links.append((test_url, f"Chapter {chapter_num}"))
                         consecutive_failures = 0
@@ -749,8 +841,7 @@ class GenericNovelCrawler:
         Returns:
             Cleaned chapter text
         """
-        response = self.session.get(chapter_url)
-        response.raise_for_status()
+        response = self._request("GET", chapter_url)
         
         soup = BeautifulSoup(response.text, 'html.parser')
         

@@ -14,6 +14,9 @@ from .exporter import Exporter
 from .import_manager import ImportManager
 from .structured_logger import StructuredLogger, get_logger
 from .crawl_service import CrawlService
+from .crawl_settings import CrawlSettings, DEFAULT_CRAWL_USER_AGENT
+from .search_service import SearchService
+from .app_settings import DesktopAppSettings, DesktopSettingsStore
 
 __all__ = [
     "Job",
@@ -32,4 +35,9 @@ __all__ = [
     "StructuredLogger",
     "get_logger",
     "CrawlService",
+    "CrawlSettings",
+    "DEFAULT_CRAWL_USER_AGENT",
+    "SearchService",
+    "DesktopAppSettings",
+    "DesktopSettingsStore",
 ]

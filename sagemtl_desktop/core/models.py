@@ -58,12 +58,16 @@ class ProcessingOptions:
     source_lang: str = "auto"  # Language code or "auto"
     target_lang: str = "en"    # English by default
     glossary_path: Optional[str] = None
+    translation_backend: str = "argos"
 
     # Chunking options
-    max_chunk_size: int = 500  # Max characters per chunk
+    max_chunk_size: int = 900  # Max characters per chunk
 
     def __str__(self):
-        return f"ProcessingOptions({self.source_lang}→{self.target_lang})"
+        return (
+            f"ProcessingOptions({self.source_lang}→{self.target_lang}, "
+            f"backend={self.translation_backend}, chunk={self.max_chunk_size})"
+        )
 
 
 @dataclass

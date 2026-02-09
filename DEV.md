@@ -62,31 +62,35 @@ Desktop runtime path:
 
 - `sagemtl_desktop/ui/main_window.py` orchestrates UI, import, crawl, translate, and export.
 - `sagemtl_desktop/core/job_manager.py` handles threaded jobs and progress/log signals.
-- `sagemtl_desktop/core/translator.py` wraps Argos Translate for offline translation.
+- `sagemtl_desktop/core/translator.py` provides chunked translation with backend selection (`argos`, optional `googletrans`, `echo`) and translation-memory caching.
 - `sagemtl_desktop/core/glossary.py` and `sagemtl_desktop/core/glossary_manager.py` both exist; the app currently uses both flows.
 - `sagemtl_desktop/core/novel_library.py` persists crawled content.
 - `sagemtl_desktop/core/crawl_service.py` now owns crawl strategy decisions used by the UI.
+- `sagemtl_desktop/core/crawl_settings.py` defines per-site crawl runtime settings.
+- `sagemtl_desktop/core/search_service.py` handles crawler search execution for UI jobs.
+- `sagemtl_desktop/core/app_settings.py` bridges desktop preferences to shared `sagemtl.config.Settings`.
+- `sagemtl_desktop/ui/i18n.py` and `sagemtl_desktop/ui/error_hints.py` handle UI localization and actionable recovery hints.
 
 Crawler flow today:
 
 - Search and URL classification use `LightNovelCrawlerWrapper`.
-- UI chapter discovery/download now calls `CrawlService`, which routes to wrapper methods.
-- Full and first-N selections use `LightNovelCrawlerWrapper.fetch_novel()` (the tested wrapper path).
-- Custom-range selections use wrapper-backed `fetch_selected_chapters()` with `GenericNovelCrawler` fallback.
+- Interactive and batch URL crawls call `CrawlService` with per-site profiles and staged progress reporting.
+- Chapter downloads execute wrapper-backed selected-chapter flow with `GenericNovelCrawler` underneath, enabling retry/delay/robots policies and resume behavior.
+- `LightNovelCrawlerWrapper.fetch_novel()` remains available and is still covered by integration tests.
 
 Shared packages:
 
-- `sagemtl/` contains CLI, clean/crawl helpers, job store, and queue stubs.
+- `sagemtl/` contains CLI, clean/crawl helpers, job store, shared config, and release-check automation.
 - `sagemtl_crawler/` contains an adapter-based crawler engine not fully wired into current desktop flow.
 
 ## 5. Verified baseline (2026-02-09)
 
-- Non-integration tests: `27 passed, 8 deselected`.
+- Non-integration tests: `55 passed, 8 deselected`.
 - Ruff findings: `0` (`python -m ruff check sagemtl sagemtl_desktop sagemtl_crawler tests`).
-- Python files: 87 total.
+- Python files: 101 total.
 - Largest files by line count:
-  - `sagemtl_desktop/ui/main_window.py` (1619)
-  - `sagemtl_desktop/core/generic_crawler.py` (809)
+  - `sagemtl_desktop/ui/main_window.py` (2077)
+  - `sagemtl_desktop/core/generic_crawler.py` (887)
   - `sagemtl_desktop/ui/glossary_editor.py` (606)
 
 ## 6. Optimization audit
@@ -100,11 +104,18 @@ Shared packages:
 - Fixed deterministic icon resolution in `pyinstaller-desktop.spec`.
 - Removed stale SageCrawler UI/help references.
 - Cleared low-risk lint debt to a zero-issue baseline.
+- Added site-specific crawl settings, resume-aware chapter upsert, and batch URL crawl queue support.
+- Added direct EPUB export from crawler output path during crawl.
+- Added translation memory/cache for repeated chunk reuse.
+- Added optional translation backends and adaptive multilingual chunking controls.
+- Added glossary regex pattern caching for large dictionary performance.
+- Added UI localization (English/Spanish) and actionable recovery hints in core failure paths.
+- Unified desktop and CLI settings through shared config fields and desktop settings bridge.
+- Added `python -m sagemtl release-check` automation for docs/lint/tests/import smoke checks.
 
 ### Remaining priorities
 
-- Continue decomposing `MainWindow` into smaller controllers/services beyond crawl orchestration.
-- Precompile glossary regex patterns for large glossaries.
+- Continue decomposing `MainWindow` into smaller controllers/services beyond current crawl/search extractions.
 - Reduce full-file rewrites for high-frequency state updates in job/library storage.
 - Eliminate duplicate glossary systems or define strict ownership boundaries.
 - Resolve CLI command surface mismatch where `serve` is exposed but module availability is inconsistent.

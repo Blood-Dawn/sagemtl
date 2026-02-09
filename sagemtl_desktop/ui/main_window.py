@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QSplitter, QFileDialog, QMessageBox, QDialog, QTextEdit
 )
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QActionGroup
 
 from .file_list_panel import FileListPanel
 from .preview_panel import PreviewPanel
@@ -17,17 +17,21 @@ from .log_panel import LogPanel
 from .url_history_panel import URLHistoryPanel
 from .dialogs import (
     ErrorDialog, AboutDialog, SearchResultsDialog,
-    SearchProgressDialog, DownloadProgressDialog, ChapterSelectionDialog
+    SearchProgressDialog, DownloadProgressDialog, ChapterSelectionDialog,
+    CrawlOptionsDialog, BatchCrawlDialog
 )
 from .export_dialog import ExportDialog
 from .glossary_editor import GlossaryEditorDialog, QuickTermDialog
 from .translation_viewer import TranslationViewerWindow
+from .error_hints import build_actionable_error_text, get_error_recovery_hints
+from .i18n import tr as ui_tr
 
 from ..core import (
     JobManager, Translator, GlossaryProcessor,
     EPUBExtractor, Exporter,
     JobType, JobStatus, ProcessingOptions,
-    ImportManager, CrawlService, get_logger
+    ImportManager, CrawlService, CrawlSettings, SearchService,
+    DesktopAppSettings, DesktopSettingsStore, get_logger
 )
 from ..core.novel_library import NovelLibrary
 from ..core.glossary_manager import GlossaryManager
@@ -49,6 +53,9 @@ class MainWindow(QMainWindow):
 
         # Settings
         self.settings = QSettings("SageMTL", "SageMTL")
+        self.desktop_settings_store = DesktopSettingsStore()
+        self.desktop_settings = self.desktop_settings_store.load()
+        self.ui_language = self.desktop_settings.ui_language
 
         # Core components
         self.job_manager = JobManager(self)
@@ -58,6 +65,7 @@ class MainWindow(QMainWindow):
         self.exporter = Exporter()
         self.import_manager = ImportManager()
         self.crawl_service = CrawlService()
+        self.search_service = SearchService()
         self.logger = get_logger()
         
         # Novel library for persistent storage
@@ -81,8 +89,15 @@ class MainWindow(QMainWindow):
                 "lightnovel-crawler is required. Please install it via pip:\n\n    pip install lightnovel-crawler"
             )
 
-        # Processing options
-        self.processing_options = ProcessingOptions()
+        # Processing options (shared settings model with CLI/TUI)
+        self.processing_options = ProcessingOptions(
+            source_lang=self.desktop_settings.source_lang,
+            target_lang=self.desktop_settings.target_lang,
+            glossary_path=self.desktop_settings.glossary_path,
+            translation_backend=self.desktop_settings.translation_backend,
+            max_chunk_size=self.desktop_settings.max_chunk_size,
+        )
+        self.translator.set_active_backend(self.processing_options.translation_backend)
 
         # UI components
         self._init_ui()
@@ -91,6 +106,10 @@ class MainWindow(QMainWindow):
 
         # Populate available languages
         self._populate_languages()
+
+    def _tr(self, key: str, **kwargs) -> str:
+        """Translate a UI string key for the active interface language."""
+        return ui_tr(self.ui_language, key, **kwargs)
 
     def _init_ui(self):
         """Initialize UI - Modern layout with URL history"""
@@ -153,108 +172,150 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
 
         # ===== File menu =====
-        file_menu = menubar.addMenu("&File")
+        file_menu = menubar.addMenu(self._tr("menu.file"))
 
-        import_action = QAction("📁 &Import Files...", self)
+        import_action = QAction(self._tr("action.import_files"), self)
         import_action.setShortcut("Ctrl+O")
         import_action.triggered.connect(self._on_import_files)
         file_menu.addAction(import_action)
 
+        batch_crawl_action = QAction(self._tr("action.batch_crawl_urls"), self)
+        batch_crawl_action.setShortcut("Ctrl+Shift+U")
+        batch_crawl_action.triggered.connect(self._on_batch_crawl_urls)
+        file_menu.addAction(batch_crawl_action)
+
         file_menu.addSeparator()
 
-        export_action = QAction("💾 &Export Results...", self)
+        export_action = QAction(self._tr("action.export_results"), self)
         export_action.setShortcut("Ctrl+E")
         export_action.triggered.connect(self._on_export)
         file_menu.addAction(export_action)
 
-        export_novel_action = QAction("📚 Export &Novel as EPUB...", self)
+        export_novel_action = QAction(self._tr("action.export_novel_epub"), self)
         export_novel_action.setShortcut("Ctrl+Shift+E")
         export_novel_action.triggered.connect(self._on_export_novel)
         file_menu.addAction(export_novel_action)
 
         file_menu.addSeparator()
 
-        quit_action = QAction("&Quit", self)
+        quit_action = QAction(self._tr("action.quit"), self)
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
         # ===== Edit menu =====
-        edit_menu = menubar.addMenu("&Edit")
+        edit_menu = menubar.addMenu(self._tr("menu.edit"))
 
-        clear_action = QAction("🗑️ &Clear All Jobs", self)
+        clear_action = QAction(self._tr("action.clear_jobs"), self)
         clear_action.triggered.connect(self._on_clear_jobs)
         edit_menu.addAction(clear_action)
 
         # ===== Glossary menu =====
-        glossary_menu = menubar.addMenu("&Glossary")
+        glossary_menu = menubar.addMenu(self._tr("menu.glossary"))
 
-        glossary_manager_action = QAction("📋 &Glossary Manager...", self)
+        glossary_manager_action = QAction(self._tr("action.glossary_manager"), self)
         glossary_manager_action.setShortcut("Ctrl+G")
         glossary_manager_action.triggered.connect(self._on_open_glossary_manager)
         glossary_menu.addAction(glossary_manager_action)
 
         glossary_menu.addSeparator()
 
-        load_glossary_action = QAction("📥 &Load Glossary CSV...", self)
+        load_glossary_action = QAction(self._tr("action.load_glossary_csv"), self)
         load_glossary_action.triggered.connect(self._on_load_glossary_menu)
         glossary_menu.addAction(load_glossary_action)
 
-        import_glossary_action = QAction("📥 Import to Global...", self)
+        import_glossary_action = QAction(self._tr("action.import_to_global"), self)
         import_glossary_action.triggered.connect(self._on_import_glossary_csv)
         glossary_menu.addAction(import_glossary_action)
 
-        export_glossary_action = QAction("📤 Export Glossary CSV...", self)
+        export_glossary_action = QAction(self._tr("action.export_glossary_csv"), self)
         export_glossary_action.triggered.connect(self._on_export_glossary_csv)
         glossary_menu.addAction(export_glossary_action)
 
         glossary_menu.addSeparator()
 
-        apply_glossary_action = QAction("✨ &Apply Glossary to Current Chapter", self)
+        apply_glossary_action = QAction(self._tr("action.apply_glossary_current"), self)
         apply_glossary_action.setShortcut("Ctrl+Shift+G")
         apply_glossary_action.triggered.connect(self._on_apply_glossary_to_current)
         glossary_menu.addAction(apply_glossary_action)
 
-        apply_all_glossary_action = QAction("✨ Apply Glossary to All Chapters", self)
+        apply_all_glossary_action = QAction(self._tr("action.apply_glossary_all"), self)
         apply_all_glossary_action.triggered.connect(self._on_apply_glossary_to_all)
         glossary_menu.addAction(apply_all_glossary_action)
 
         # ===== Translation menu =====
-        translation_menu = menubar.addMenu("&Translation")
+        translation_menu = menubar.addMenu(self._tr("menu.translation"))
 
-        process_action = QAction("▶ &Start Processing", self)
+        process_action = QAction(self._tr("action.start_processing"), self)
         process_action.setShortcut("Ctrl+P")
         process_action.triggered.connect(self._on_start_processing)
         translation_menu.addAction(process_action)
 
         translation_menu.addSeparator()
 
+        # Translation backend submenu
+        backend_submenu = translation_menu.addMenu(self._tr("submenu.translation_backend"))
+        self.translation_backend_action_group = QActionGroup(self)
+        self.translation_backend_action_group.setExclusive(True)
+        self.translation_backend_actions = {}
+        for backend in self.translator.get_supported_backends():
+            action = QAction(backend["label"], self)
+            action.setCheckable(True)
+            action.setEnabled(bool(backend["available"]))
+            action.setToolTip(str(backend.get("hint", "")))
+            action.triggered.connect(
+                lambda checked=False, backend_name=backend["name"]: self._set_translation_backend(backend_name)
+            )
+            backend_submenu.addAction(action)
+            self.translation_backend_action_group.addAction(action)
+            self.translation_backend_actions[backend["name"]] = action
+
+        chunk_submenu = translation_menu.addMenu(self._tr("submenu.chunk_size"))
+        self.chunk_size_action_group = QActionGroup(self)
+        self.chunk_size_action_group.setExclusive(True)
+        self.chunk_size_actions = {}
+        for size, label in (
+            (500, "Small (500 chars)"),
+            (900, "Balanced (900 chars)"),
+            (1400, "Large (1400 chars)"),
+            (2000, "XL (2000 chars)"),
+        ):
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.triggered.connect(
+                lambda checked=False, chunk_size=size: self._set_translation_chunk_size(chunk_size)
+            )
+            chunk_submenu.addAction(action)
+            self.chunk_size_action_group.addAction(action)
+            self.chunk_size_actions[size] = action
+
         # Language settings submenu
-        lang_submenu = translation_menu.addMenu("🌐 Language Settings")
-        
-        self.source_auto_action = QAction("Source: Auto-detect", self)
+        lang_submenu = translation_menu.addMenu(self._tr("submenu.language_settings"))
+
+        self.source_auto_action = QAction(self._tr("action.source_auto"), self)
         self.source_auto_action.setCheckable(True)
         self.source_auto_action.setChecked(True)
+        self.source_auto_action.triggered.connect(lambda checked=False: self._set_source_lang("auto"))
         lang_submenu.addAction(self.source_auto_action)
         
         lang_submenu.addSeparator()
         
-        source_zh_action = QAction("Source: Chinese", self)
+        source_zh_action = QAction(self._tr("action.source_chinese"), self)
         source_zh_action.triggered.connect(lambda: self._set_source_lang("zh"))
         lang_submenu.addAction(source_zh_action)
-        
-        source_ja_action = QAction("Source: Japanese", self)
+
+        source_ja_action = QAction(self._tr("action.source_japanese"), self)
         source_ja_action.triggered.connect(lambda: self._set_source_lang("ja"))
         lang_submenu.addAction(source_ja_action)
-        
-        source_ko_action = QAction("Source: Korean", self)
+
+        source_ko_action = QAction(self._tr("action.source_korean"), self)
         source_ko_action.triggered.connect(lambda: self._set_source_lang("ko"))
         lang_submenu.addAction(source_ko_action)
 
         # ===== View menu =====
-        view_menu = menubar.addMenu("&View")
+        view_menu = menubar.addMenu(self._tr("menu.view"))
 
-        self.toggle_log_action = QAction("📋 Show &Log Panel", self)
+        self.toggle_log_action = QAction(self._tr("action.show_log_panel"), self)
         self.toggle_log_action.setCheckable(True)
         self.toggle_log_action.setChecked(True)
         self.toggle_log_action.setShortcut("Ctrl+L")
@@ -263,28 +324,45 @@ class MainWindow(QMainWindow):
 
         view_menu.addSeparator()
 
-        expand_preview_action = QAction("🔍 Maximize Preview", self)
+        expand_preview_action = QAction(self._tr("action.maximize_preview"), self)
         expand_preview_action.setShortcut("Ctrl+M")
         expand_preview_action.triggered.connect(self._maximize_preview)
         view_menu.addAction(expand_preview_action)
 
         view_menu.addSeparator()
 
-        translation_viewer_action = QAction("🌐 Open &Translation Viewer...", self)
+        translation_viewer_action = QAction(self._tr("action.open_translation_viewer"), self)
         translation_viewer_action.setShortcut("Ctrl+T")
         translation_viewer_action.triggered.connect(self._on_open_translation_viewer)
         view_menu.addAction(translation_viewer_action)
 
-        # ===== Help menu =====
-        help_menu = menubar.addMenu("&Help")
+        view_menu.addSeparator()
 
-        supported_sites_action = QAction("🌐 &View Supported Sites...", self)
+        ui_lang_menu = view_menu.addMenu(self._tr("submenu.ui_language"))
+        self.ui_language_action_group = QActionGroup(self)
+        self.ui_language_action_group.setExclusive(True)
+        self.ui_language_actions = {}
+        for lang_code, label_key in (("en", "action.ui_lang_english"), ("es", "action.ui_lang_spanish")):
+            action = QAction(self._tr(label_key), self)
+            action.setCheckable(True)
+            action.setChecked(lang_code == self.ui_language)
+            action.triggered.connect(
+                lambda checked=False, language=lang_code: self._set_ui_language(language)
+            )
+            ui_lang_menu.addAction(action)
+            self.ui_language_action_group.addAction(action)
+            self.ui_language_actions[lang_code] = action
+
+        # ===== Help menu =====
+        help_menu = menubar.addMenu(self._tr("menu.help"))
+
+        supported_sites_action = QAction(self._tr("action.view_supported_sites"), self)
         supported_sites_action.triggered.connect(self._on_supported_sites)
         help_menu.addAction(supported_sites_action)
 
         help_menu.addSeparator()
 
-        about_action = QAction("ℹ️ &About", self)
+        about_action = QAction(self._tr("action.about"), self)
         about_action.triggered.connect(self._on_about)
         help_menu.addAction(about_action)
 
@@ -319,7 +397,7 @@ class MainWindow(QMainWindow):
 
     def _populate_languages(self):
         """Populate language dropdowns with available Argos models"""
-        if self.translator.is_available():
+        if self.translator.is_available("argos"):
             available = self.translator.get_available_languages()
             self.controls_panel.populate_languages(available)
         else:
@@ -340,21 +418,30 @@ class MainWindow(QMainWindow):
                 sizes = [int(s) for s in splitter_sizes]
                 self.main_splitter.setSizes(sizes)
 
-        # Restore language settings
-        source_lang = self.settings.value("source_lang", "auto")
-        target_lang = self.settings.value("target_lang", "en")
-        glossary_path = self.settings.value("glossary_path")
+        # Restore shared desktop/CLI config values.
+        self.desktop_settings = self.desktop_settings_store.load()
+        self.ui_language = self.desktop_settings.ui_language
+        self.processing_options.source_lang = self.desktop_settings.source_lang
+        self.processing_options.target_lang = self.desktop_settings.target_lang
+        self.processing_options.max_chunk_size = self.desktop_settings.max_chunk_size
+        self.processing_options.translation_backend = self.desktop_settings.translation_backend
+        self.processing_options.glossary_path = self.desktop_settings.glossary_path
 
-        # Update processing options
-        self.processing_options.source_lang = source_lang
-        self.processing_options.target_lang = target_lang
+        active_backend = self.processing_options.translation_backend
+        if not self.translator.is_available(active_backend):
+            active_backend = "argos" if self.translator.is_available("argos") else "echo"
+            self.processing_options.translation_backend = active_backend
+        self.translator.set_active_backend(active_backend)
+        self._sync_translation_backend_actions()
+        self._sync_chunk_size_actions()
+        self._sync_ui_language_actions()
 
-        if glossary_path:
+        if self.processing_options.glossary_path:
             try:
-                self.glossary.load_glossary(glossary_path)
-                self.processing_options.glossary_path = glossary_path
+                self.glossary.load_glossary(self.processing_options.glossary_path)
             except Exception as e:
                 print(f"Failed to load saved glossary: {e}")
+                self.processing_options.glossary_path = None
 
         # Load saved novels from library
         self._refresh_novel_library()
@@ -368,10 +455,36 @@ class MainWindow(QMainWindow):
         """Save settings"""
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("splitter_sizes", self.main_splitter.sizes())
-        self.settings.setValue("source_lang", self.processing_options.source_lang)
-        self.settings.setValue("target_lang", self.processing_options.target_lang)
-        if self.processing_options.glossary_path:
-            self.settings.setValue("glossary_path", self.processing_options.glossary_path)
+        self.desktop_settings = self.desktop_settings_store.save(
+            DesktopAppSettings(
+                source_lang=self.processing_options.source_lang,
+                target_lang=self.processing_options.target_lang,
+                glossary_path=self.processing_options.glossary_path,
+                translation_backend=self.processing_options.translation_backend,
+                max_chunk_size=self.processing_options.max_chunk_size,
+                ui_language=self.ui_language,
+            )
+        )
+
+    def _show_actionable_error(self, title: str, context: str, error_message: str):
+        """Show a critical error dialog with recovery hints."""
+        message = build_actionable_error_text(error_message, context=context)
+        QMessageBox.critical(self, title, message)
+
+    def _get_crawl_profile(self, url: str) -> CrawlSettings:
+        """Load site-specific crawl settings for a URL."""
+        return self.crawl_service.get_site_profile(self.settings, url)
+
+    def _save_crawl_profile(self, url: str, crawl_settings: CrawlSettings):
+        """Persist site-specific crawl settings for a URL."""
+        self.crawl_service.save_site_profile(self.settings, url, crawl_settings)
+
+    def _build_crawl_wrapper(self, crawl_settings: CrawlSettings) -> LightNovelCrawlerWrapper:
+        """Create a per-run wrapper configured for current crawl settings."""
+        return LightNovelCrawlerWrapper(
+            chapter_download_workers=crawl_settings.chapter_download_workers,
+            crawl_settings=crawl_settings
+        )
 
     def closeEvent(self, event):
         """Handle window close"""
@@ -567,6 +680,12 @@ class MainWindow(QMainWindow):
 
     def _on_fetch_url(self, url: str):
         """Handle fetch URL or novel name"""
+        # Allow quick batch input via multiline/comma-separated URL paste.
+        batch_urls = self.crawl_service.normalize_batch_urls(url)
+        if len(batch_urls) > 1:
+            self._start_batch_crawl_job(batch_urls, max_chapters=0)
+            return
+
         # Get selected crawler
         selected_crawler = self.get_selected_crawler()
         
@@ -580,8 +699,6 @@ class MainWindow(QMainWindow):
 
     def _search_and_crawl_novel(self, novel_name: str, selected_crawler):
         """Search for novel by name and let user select"""
-        import asyncio
-        
         self.logger.info(
             f"Searching for novel: {novel_name}",
             stage="crawl_search"
@@ -596,8 +713,6 @@ class MainWindow(QMainWindow):
         
         # Search in background thread
         def search_processor(job, progress_cb, log_cb):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             try:
                 # Define progress callback
                 def progress_wrapper(current, total, message):
@@ -607,8 +722,10 @@ class MainWindow(QMainWindow):
                     log_cb("info", message)
                 
                 # Run search
-                results = loop.run_until_complete(
-                    selected_crawler.search_novel_by_name(novel_name, progress_wrapper)
+                results = self.search_service.run_search_sync(
+                    selected_crawler,
+                    novel_name=novel_name,
+                    progress_callback=progress_wrapper
                 )
                 
                 # Store results in job for retrieval
@@ -623,8 +740,6 @@ class MainWindow(QMainWindow):
                 log_cb("error", err_msg)
                 job.error = str(e)
                 search_results['error'] = str(e)
-            finally:
-                loop.close()
         
         # Create temporary search job
         job_id = self.job_manager.create_job(
@@ -690,11 +805,10 @@ class MainWindow(QMainWindow):
         
         # Check for errors
         if search_results['error']:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.critical(
-                self,
+            self._show_actionable_error(
                 "Search Error",
-                f"Search failed:\n{search_results['error']}"
+                context="search",
+                error_message=str(search_results['error']),
             )
             del self._pending_search
             return
@@ -721,13 +835,32 @@ class MainWindow(QMainWindow):
 
     def _crawl_url(self, url: str, selected_crawler, novel_title: str = None):
         """Crawl a novel from a direct URL - two phase: discover then download"""
-        # Show crawl options dialog
-        from sagemtl_desktop.ui.dialogs import CrawlOptionsDialog
-        dialog = CrawlOptionsDialog(url, self)
+        # Load and edit site-specific crawl settings.
+        initial_settings = self._get_crawl_profile(url)
+        dialog = CrawlOptionsDialog(url, initial_settings=initial_settings, parent=self)
         if dialog.exec():
             options = dialog.get_options()
             if not options.get('novel_name') and novel_title:
                 options['novel_name'] = novel_title
+            crawl_settings = CrawlSettings.from_dict(options.get("crawl_settings"))
+
+            # Optional direct EPUB export path from crawled output.
+            if crawl_settings.auto_export_epub and not crawl_settings.epub_output_dir:
+                default_export_dir = self.crawl_service.default_epub_output_dir()
+                selected_output_dir = QFileDialog.getExistingDirectory(
+                    self,
+                    "Select EPUB Output Directory",
+                    default_export_dir
+                )
+                if not selected_output_dir:
+                    return
+                crawl_settings.epub_output_dir = selected_output_dir
+
+            self._save_crawl_profile(url, crawl_settings)
+
+            # Use per-run wrapper configured with the selected crawl profile.
+            crawl_crawler = self._build_crawl_wrapper(crawl_settings)
+            options["crawl_settings"] = crawl_settings.to_dict()
 
             # Add URL to history with title if known
             self.url_history_panel.add_to_history(url, novel_title or "")
@@ -736,7 +869,8 @@ class MainWindow(QMainWindow):
                 f"Starting chapter discovery from URL: {options['url']}",
                 stage="crawl",
                 url=options['url'],
-                novel_name=options.get('novel_name')
+                novel_name=options.get('novel_name'),
+                site_key=self.crawl_service.site_key(url)
             )
 
             # Phase 1: Discover chapters first
@@ -791,7 +925,11 @@ class MainWindow(QMainWindow):
             def on_discovery_error(error_msg):
                 discovery_dialog.add_log_line(f"Error: {error_msg}", level="error")
                 discovery_dialog.set_status("Discovery failed")
-                QMessageBox.critical(self, "Discovery Failed", f"Failed to discover chapters:\n\n{error_msg}")
+                self._show_actionable_error(
+                    "Discovery Failed",
+                    context="crawl_discovery",
+                    error_message=error_msg,
+                )
                 discovery_dialog.close()
             
             def on_discovery_complete(title, author, chapters):
@@ -814,15 +952,18 @@ class MainWindow(QMainWindow):
                     if selected_chapters:
                         # Proceed with download
                         self._download_selected_chapters(
-                            url, title, author, 
-                            chapters,
-                            selected_chapters,
-                            options,
-                            selected_crawler
+                            url=url,
+                            title=title,
+                            author=author,
+                            discovered_chapters=chapters,
+                            selected_chapters=selected_chapters,
+                            options=options,
+                            selected_crawler=crawl_crawler,
+                            crawl_settings=crawl_settings
                         )
             
             # Start discovery worker
-            worker = DiscoveryWorker(selected_crawler, self.crawl_service, url)
+            worker = DiscoveryWorker(crawl_crawler, self.crawl_service, url)
             discovery_state['worker'] = worker
             worker.progress.connect(on_discovery_progress)
             worker.error.connect(on_discovery_error)
@@ -837,25 +978,55 @@ class MainWindow(QMainWindow):
         discovered_chapters: list,
         selected_chapters: list,
         options: dict,
-        selected_crawler
+        selected_crawler,
+        crawl_settings: CrawlSettings
     ):
         """Download the selected chapters after user confirmation"""
+        existing_novel = (
+            self.novel_library.get_novel_by_url(url)
+            if crawl_settings.resume_existing
+            else None
+        )
+        pending_chapters = selected_chapters
+        skipped_existing_count = 0
+        if existing_novel:
+            existing_urls = [chapter.url for chapter in existing_novel.chapters]
+            pending_chapters, skipped_existing_count = (
+                self.crawl_service.filter_pending_chapters_for_resume(
+                    selected_chapters,
+                    existing_urls
+                )
+            )
+
+        if not pending_chapters:
+            QMessageBox.information(
+                self,
+                "Nothing to Download",
+                "All selected chapters already exist in your library for this source URL."
+            )
+            return
+
         self.logger.info(
-            f"Starting download of {len(selected_chapters)} chapters: {title}",
+            f"Starting download of {len(pending_chapters)} chapters: {title}",
             stage="crawl",
-            url=url
+            url=url,
+            resume_existing=crawl_settings.resume_existing,
+            skipped_existing_chapters=skipped_existing_count
         )
         
         # Create crawl job
         job_id = self.job_manager.create_job(
             JobType.CRAWL_URL,
             options.get('novel_name') or title,
+            skipped_existing_chapters=skipped_existing_count,
+            selected_chapter_count=len(selected_chapters),
+            pending_chapter_count=len(pending_chapters),
             **options
         )
 
         # Create and show download progress dialog (non-modal)
         download_dialog = DownloadProgressDialog(
-            f"Downloading: {title} ({len(selected_chapters)} chapters)", 
+            f"Downloading: {title} ({len(pending_chapters)} chapters)", 
             self
         )
         download_dialog.show()
@@ -863,7 +1034,7 @@ class MainWindow(QMainWindow):
         # Track chapter rendering for status updates
         rendering_state = {
             'chapters_rendered': 0,
-            'total_chapters': len(selected_chapters),
+            'total_chapters': len(pending_chapters),
             'latest_status': "Preparing download..."
         }
 
@@ -874,7 +1045,12 @@ class MainWindow(QMainWindow):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                log_cb("info", f"Downloading {len(selected_chapters)} chapters...")
+                log_cb("info", f"Stage 1/4: Downloading {len(pending_chapters)} chapters...")
+                if skipped_existing_count > 0:
+                    log_cb(
+                        "info",
+                        f"Resume enabled: skipped {skipped_existing_count} chapters already in library"
+                    )
 
                 def progress_wrapper(current, total, message):
                     rendering_state['latest_status'] = message
@@ -890,8 +1066,10 @@ class MainWindow(QMainWindow):
                         title=title,
                         author=author,
                         discovered_chapters=discovered_chapters,
-                        selected_chapters=selected_chapters,
-                        progress_callback=progress_wrapper
+                        selected_chapters=pending_chapters,
+                        progress_callback=progress_wrapper,
+                        # Enforce per-site crawl policies through the generic-backed path.
+                        force_selected_download=True
                     )
                 )
 
@@ -902,7 +1080,7 @@ class MainWindow(QMainWindow):
                 rendering_state['total_chapters'] = len(novel_data.chapters)
 
                 # Convert chapters to text format
-                log_cb("info", f"Processing {len(novel_data.chapters)} chapters...")
+                log_cb("info", f"Stage 2/4: Processing {len(novel_data.chapters)} chapters...")
                 full_text = self.crawl_service.build_full_text(novel_data)
 
                 # Store in job
@@ -910,12 +1088,31 @@ class MainWindow(QMainWindow):
                 job.metadata['chapter_count'] = len(novel_data.chapters)
                 job.metadata['novel_title'] = novel_data.title
                 job.metadata['author'] = novel_data.author
+                job.metadata['skipped_existing_chapters'] = skipped_existing_count
 
-                log_cb("info", f"Crawl completed: {len(novel_data.chapters)} chapters")
+                # Optional direct EPUB export from in-memory crawler output.
+                exported_epub_path = ""
+                if crawl_settings.auto_export_epub:
+                    log_cb("info", "Stage 3/4: Exporting crawled output directly to EPUB...")
+                    exported_epub_path = self.crawl_service.export_crawled_epub(
+                        novel=novel_data,
+                        output_dir=crawl_settings.epub_output_dir,
+                        author_fallback=author or "Unknown"
+                    )
+                    if exported_epub_path:
+                        log_cb("info", f"Direct EPUB export completed: {exported_epub_path}")
+                job.metadata["exported_epub_path"] = exported_epub_path
 
-                # Save novel to persistent library
-                saved_novel = self.novel_library.add_novel_from_crawled(novel_data, url)
+                log_cb("info", "Stage 4/4: Saving crawled novel to library...")
+
+                # Save novel to persistent library (merge for resume mode).
+                saved_novel = self.novel_library.upsert_novel_from_crawled(
+                    novel_data,
+                    source_url=url,
+                    resume_existing=crawl_settings.resume_existing
+                )
                 job.metadata['saved_novel_title'] = saved_novel.title
+                job.metadata['saved_novel_id'] = saved_novel.novel_id
                 log_cb("info", f"Novel saved to library: {saved_novel.title}")
 
                 # Log successful crawl
@@ -964,8 +1161,10 @@ class MainWindow(QMainWindow):
             if job.status == JobStatus.COMPLETED:
                 # Update final status
                 if rendering_state['total_chapters'] > 0:
+                    skipped = job.metadata.get("skipped_existing_chapters", 0)
+                    skipped_msg = f", skipped {skipped} existing" if skipped else ""
                     download_dialog.set_status(
-                        f"Completed: {rendering_state['total_chapters']} chapters downloaded"
+                        f"Completed: {rendering_state['total_chapters']} chapters downloaded{skipped_msg}"
                     )
 
                 # Refresh novel library in UI
@@ -974,12 +1173,19 @@ class MainWindow(QMainWindow):
                 # Update URL history with resolved title from saved novel.
                 if saved_title := job.metadata.get('saved_novel_title'):
                     self.url_history_panel.update_history_title(url, saved_title)
+
+                if exported_epub := job.metadata.get("exported_epub_path"):
+                    QMessageBox.information(
+                        self,
+                        "Direct EPUB Export Complete",
+                        f"EPUB exported directly from crawl output:\n{exported_epub}"
+                    )
             else:
                 download_dialog.set_status("Download failed")
-                QMessageBox.critical(
-                    self,
+                self._show_actionable_error(
                     "Download Failed",
-                    job.error_message or "Crawler job failed."
+                    context="crawl_download",
+                    error_message=job.error_message or "Crawler job failed.",
                 )
             
             # Close download dialog
@@ -987,6 +1193,202 @@ class MainWindow(QMainWindow):
         
         self.job_manager.job_updated.connect(on_download_completed)
         self.job_manager.start_job(job_id, crawl_processor)
+
+    def _on_batch_crawl_urls(self):
+        """Open batch URL dialog and enqueue crawl queue job."""
+        dialog = BatchCrawlDialog(self)
+        if not dialog.exec():
+            return
+
+        options = dialog.get_options()
+        urls = self.crawl_service.normalize_batch_urls(options.get("raw_urls", ""))
+        if not urls:
+            QMessageBox.warning(
+                self,
+                "No Valid URLs",
+                "No valid HTTP(S) URLs were found in the batch input."
+            )
+            return
+
+        self._start_batch_crawl_job(urls, options.get("max_chapters", 0))
+
+    def _start_batch_crawl_job(self, urls: list[str], max_chapters: int):
+        """Process a list of URLs as a sequential crawl queue job."""
+        profile_map = {
+            url: self._get_crawl_profile(url).to_dict()
+            for url in urls
+        }
+
+        self.logger.info(
+            f"Starting batch crawl queue ({len(urls)} URLs)",
+            stage="crawl_batch",
+            url_count=len(urls),
+            max_chapters=max_chapters,
+        )
+
+        job_id = self.job_manager.create_job(
+            JobType.CRAWL_URL,
+            f"Batch Crawl ({len(urls)} URLs)",
+            batch_url_count=len(urls),
+            batch_urls=urls,
+            max_chapters=max_chapters,
+        )
+
+        batch_dialog = DownloadProgressDialog(
+            f"Batch Crawl Queue ({len(urls)} URLs)",
+            self
+        )
+        batch_dialog.show()
+
+        state = {
+            "total": len(urls),
+            "processed": 0,
+            "success": 0,
+            "failed": 0,
+            "latest_status": "Preparing queue...",
+            "results": [],
+        }
+
+        def batch_processor(job, progress_cb, log_cb):
+            import asyncio
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                for idx, url in enumerate(urls, 1):
+                    state["latest_status"] = f"Queue {idx}/{len(urls)}: {url}"
+                    log_cb("info", f"Queue {idx}/{len(urls)}: starting crawl for {url}")
+                    settings = CrawlSettings.from_dict(profile_map.get(url, {}))
+                    crawler = self._build_crawl_wrapper(settings)
+
+                    def url_progress(current, total, message):
+                        total_safe = max(total, 1)
+                        local_fraction = current / total_safe
+                        overall_fraction = ((idx - 1) + local_fraction) / len(urls)
+                        progress_cb(overall_fraction * 100)
+                        state["latest_status"] = f"Queue {idx}/{len(urls)}: {message}"
+                        log_cb("info", f"[{idx}/{len(urls)}] {message}")
+
+                    try:
+                        title, author, discovered_chapters = loop.run_until_complete(
+                            self.crawl_service.discover_chapters(
+                                crawler,
+                                url,
+                                progress_callback=url_progress
+                            )
+                        )
+                        if not discovered_chapters:
+                            raise RuntimeError("No chapters discovered for URL")
+
+                        selected_chapters = discovered_chapters
+                        if max_chapters > 0:
+                            selected_chapters = discovered_chapters[:max_chapters]
+
+                        novel_data = loop.run_until_complete(
+                            self.crawl_service.download_selected_chapters(
+                                crawler=crawler,
+                                url=url,
+                                title=title,
+                                author=author,
+                                discovered_chapters=discovered_chapters,
+                                selected_chapters=selected_chapters,
+                                progress_callback=url_progress,
+                                force_selected_download=True,
+                            )
+                        )
+                        if not novel_data.title:
+                            novel_data.title = title
+
+                        saved_novel = self.novel_library.upsert_novel_from_crawled(
+                            novel_data,
+                            source_url=url,
+                            resume_existing=settings.resume_existing
+                        )
+                        state["success"] += 1
+                        state["results"].append(
+                            {
+                                "url": url,
+                                "title": saved_novel.title,
+                                "status": "success",
+                            }
+                        )
+
+                        if settings.auto_export_epub and settings.epub_output_dir:
+                            try:
+                                epub_path = self.crawl_service.export_crawled_epub(
+                                    novel=novel_data,
+                                    output_dir=settings.epub_output_dir,
+                                    author_fallback=saved_novel.author
+                                )
+                                state["results"][-1]["epub_path"] = epub_path
+                                log_cb("info", f"[{idx}/{len(urls)}] Direct EPUB: {epub_path}")
+                            except Exception as export_exc:
+                                state["results"][-1]["epub_error"] = str(export_exc)
+                                log_cb("warning", f"[{idx}/{len(urls)}] EPUB export failed: {export_exc}")
+
+                        log_cb(
+                            "info",
+                            f"Queue {idx}/{len(urls)} completed: {saved_novel.title} ({len(novel_data.chapters)} chapters)"
+                        )
+                    except Exception as crawl_exc:
+                        state["failed"] += 1
+                        state["results"].append(
+                            {
+                                "url": url,
+                                "title": "",
+                                "status": "failed",
+                                "error": str(crawl_exc),
+                            }
+                        )
+                        log_cb("error", f"Queue {idx}/{len(urls)} failed: {crawl_exc}")
+                    finally:
+                        state["processed"] = idx
+
+                job.metadata["batch_results"] = state["results"]
+                job.metadata["batch_success"] = state["success"]
+                job.metadata["batch_failed"] = state["failed"]
+                job.metadata["batch_processed"] = state["processed"]
+            finally:
+                loop.close()
+
+        def on_batch_log(timestamp, log_job_id, level, message):
+            if log_job_id != job_id:
+                return
+            batch_dialog.add_log_line(message, level=level)
+            batch_dialog.set_status(state["latest_status"])
+
+        def on_batch_complete(completed_job_id):
+            if completed_job_id != job_id:
+                return
+
+            job = self.job_manager.get_job(completed_job_id)
+            if not job or job.status not in (JobStatus.COMPLETED, JobStatus.FAILED):
+                return
+
+            with contextlib.suppress(Exception):
+                self.job_manager.job_updated.disconnect(on_batch_complete)
+                self.job_manager.log_emitted.disconnect(on_batch_log)
+
+            self._refresh_novel_library()
+            for result in state["results"]:
+                if result.get("status") == "success" and result.get("title"):
+                    self.url_history_panel.add_to_history(result["url"], result["title"])
+
+            summary = (
+                f"Batch crawl finished.\n\n"
+                f"Processed: {state['processed']}/{state['total']}\n"
+                f"Success: {state['success']}\n"
+                f"Failed: {state['failed']}"
+            )
+            if job.status == JobStatus.FAILED:
+                summary += f"\n\nJob error: {job.error_message or 'Unknown error'}"
+
+            QMessageBox.information(self, "Batch Crawl Complete", summary)
+            batch_dialog.close()
+
+        self.job_manager.log_emitted.connect(on_batch_log)
+        self.job_manager.job_updated.connect(on_batch_complete)
+        self.job_manager.start_job(job_id, batch_processor)
 
     def _on_load_glossary(self, path: str):
         """Handle load glossary"""
@@ -1033,10 +1435,10 @@ class MainWindow(QMainWindow):
                 glossary_path=path,
                 exc_info=e
             )
-            QMessageBox.critical(
-                self,
+            self._show_actionable_error(
                 "Glossary Error",
-                f"Failed to load glossary:\n{str(e)}"
+                context="glossary",
+                error_message=f"Failed to load glossary:\n{str(e)}",
             )
 
     def _on_load_glossary_menu(self):
@@ -1053,7 +1455,101 @@ class MainWindow(QMainWindow):
     def _set_source_lang(self, lang_code: str):
         """Set source language"""
         self.processing_options.source_lang = lang_code
+        if hasattr(self, "source_auto_action"):
+            self.source_auto_action.setChecked(lang_code == "auto")
+        self._save_settings()
         self.logger.info(f"Source language set to: {lang_code}", stage="settings")
+
+    def _set_translation_backend(self, backend: str):
+        """Set translation backend for future processing jobs."""
+        backend_meta = {
+            entry["name"]: entry
+            for entry in self.translator.get_supported_backends()
+        }
+        if not self.translator.is_available(backend):
+            hint = backend_meta.get(backend, {}).get("hint", "Missing optional dependency.")
+            QMessageBox.warning(
+                self,
+                "Backend Unavailable",
+                f"The '{backend}' backend is not available.\n\n{hint}"
+            )
+            self._sync_translation_backend_actions()
+            return
+
+        self.processing_options.translation_backend = backend
+        self.translator.set_active_backend(backend)
+        self._sync_translation_backend_actions()
+        self._save_settings()
+        self.logger.info(
+            f"Translation backend set to: {backend}",
+            stage="settings",
+            backend=backend
+        )
+
+    def _set_translation_chunk_size(self, max_chunk_size: int):
+        """Set translation chunk size used by chunked translation."""
+        normalized_size = max(100, min(5000, int(max_chunk_size)))
+        self.processing_options.max_chunk_size = normalized_size
+        self._sync_chunk_size_actions()
+        self._save_settings()
+        self.logger.info(
+            f"Translation chunk size set to: {normalized_size}",
+            stage="settings",
+            max_chunk_size=normalized_size
+        )
+
+    def _sync_translation_backend_actions(self):
+        """Sync check state and availability for backend menu actions."""
+        selected_backend = self.processing_options.translation_backend
+        for backend in self.translator.get_supported_backends():
+            action = self.translation_backend_actions.get(backend["name"])
+            if not action:
+                continue
+            action.setEnabled(bool(backend["available"]))
+            action.setChecked(backend["name"] == selected_backend)
+
+    def _sync_chunk_size_actions(self):
+        """Sync check state for chunk-size menu actions."""
+        current_size = self.processing_options.max_chunk_size
+        if current_size in self.chunk_size_actions:
+            self.chunk_size_actions[current_size].setChecked(True)
+            return
+
+        nearest_size = min(self.chunk_size_actions.keys(), key=lambda size: abs(size - current_size))
+        self.chunk_size_actions[nearest_size].setChecked(True)
+
+    def _set_ui_language(self, language: str):
+        """Set UI language and rebuild menu labels."""
+        normalized = language if language in {"en", "es"} else "en"
+        if normalized == self.ui_language:
+            self._sync_ui_language_actions()
+            return
+
+        self.ui_language = normalized
+        self.desktop_settings.ui_language = normalized
+        self._save_settings()
+        self.menuBar().clear()
+        self._create_menu_bar()
+        self._sync_translation_backend_actions()
+        self._sync_chunk_size_actions()
+        self._sync_ui_language_actions()
+
+        language_name_key = "action.ui_lang_english" if normalized == "en" else "action.ui_lang_spanish"
+        QMessageBox.information(
+            self,
+            self._tr("msg.ui_language_changed.title"),
+            self._tr(
+                "msg.ui_language_changed.body",
+                language_name=self._tr(language_name_key),
+            ),
+        )
+
+    def _sync_ui_language_actions(self):
+        """Sync check state for UI language menu actions."""
+        if not hasattr(self, "ui_language_actions"):
+            return
+        for language, action in self.ui_language_actions.items():
+            action.setChecked(language == self.ui_language)
 
     def _toggle_log_panel(self, checked: bool):
         """Toggle visibility of log panel"""
@@ -1232,7 +1728,9 @@ class MainWindow(QMainWindow):
             job_count=len(jobs),
             source_lang=self.processing_options.source_lang,
             target_lang=self.processing_options.target_lang,
-            glossary_loaded=self.glossary.is_loaded()
+            glossary_loaded=self.glossary.is_loaded(),
+            translation_backend=self.processing_options.translation_backend,
+            max_chunk_size=self.processing_options.max_chunk_size,
         )
 
         # Disable processing button
@@ -1250,7 +1748,9 @@ class MainWindow(QMainWindow):
             f"Starting translation job: {job.name}",
             stage="processing",
             job_id=job_id,
-            content_length=len(job.original_text)
+            content_length=len(job.original_text),
+            translation_backend=self.processing_options.translation_backend,
+            max_chunk_size=self.processing_options.max_chunk_size,
         )
 
         def translate_processor(job, progress_cb, log_cb):
@@ -1262,17 +1762,23 @@ class MainWindow(QMainWindow):
                 text = job.original_text
 
             # Step 2: Translate
-            if self.translator.is_available():
-                log_cb("info", "Translating...")
+            backend = self.processing_options.translation_backend
+            if self.translator.is_available(backend):
+                log_cb(
+                    "info",
+                    f"Translating with backend '{backend}' (chunk size={self.processing_options.max_chunk_size})..."
+                )
                 translated = self.translator.translate(
                     text,
                     self.processing_options.source_lang,
                     self.processing_options.target_lang,
                     progress_callback=progress_cb,
-                    log_callback=log_cb
+                    log_callback=log_cb,
+                    backend=backend,
+                    max_chunk_size=self.processing_options.max_chunk_size,
                 )
             else:
-                log_cb("warn", "Translator not available, skipping translation")
+                log_cb("warn", f"Backend '{backend}' unavailable, skipping translation")
                 translated = text
 
             # Step 3: Apply glossary after
@@ -1286,6 +1792,8 @@ class MainWindow(QMainWindow):
             job.cleaned_text = cleaned
             job.metadata['source_lang'] = self.processing_options.source_lang
             job.metadata['target_lang'] = self.processing_options.target_lang
+            job.metadata['translation_backend'] = self.processing_options.translation_backend
+            job.metadata['max_chunk_size'] = self.processing_options.max_chunk_size
 
             # Log completion
             self.logger.info(
@@ -1353,10 +1861,10 @@ class MainWindow(QMainWindow):
                 )
 
             except Exception as e:
-                QMessageBox.critical(
-                    self,
+                self._show_actionable_error(
                     "Export Error",
-                    f"Failed to export files:\n{str(e)}"
+                    context="export",
+                    error_message=f"Failed to export files:\n{str(e)}",
                 )
                 self.logger.error(
                     f"Export failed: {str(e)}",
@@ -1435,10 +1943,10 @@ class MainWindow(QMainWindow):
             )
             
         except Exception as e:
-            QMessageBox.critical(
-                self,
+            self._show_actionable_error(
                 "Export Error",
-                f"Failed to export novel:\n{str(e)}"
+                context="export",
+                error_message=f"Failed to export novel:\n{str(e)}",
             )
             self.logger.error(
                 f"Novel export failed: {str(e)}",
@@ -1449,10 +1957,14 @@ class MainWindow(QMainWindow):
     def _on_source_lang_changed(self, lang_code: str):
         """Handle source language change"""
         self.processing_options.source_lang = lang_code
+        if hasattr(self, "source_auto_action"):
+            self.source_auto_action.setChecked(lang_code == "auto")
+        self._save_settings()
 
     def _on_target_lang_changed(self, lang_code: str):
         """Handle target language change"""
         self.processing_options.target_lang = lang_code
+        self._save_settings()
 
     def _on_job_selected(self, job_id: str):
         """Handle job selection"""
@@ -1463,11 +1975,14 @@ class MainWindow(QMainWindow):
         """Handle job double click (show error if failed)"""
         job = self.job_manager.get_job(job_id)
         if job and job.status == JobStatus.FAILED:
+            context = str(job.job_type.value) if job.job_type else "processing"
+            hints = get_error_recovery_hints(job.error_message or "", context=context)
             dialog = ErrorDialog(
                 job.name,
                 job.error_message or "Unknown error",
                 job.error_traceback or "",
-                self
+                recovery_hints=hints,
+                parent=self,
             )
             dialog.exec()
 
