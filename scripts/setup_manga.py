@@ -26,6 +26,11 @@ DEFAULT_WARM_MODELS = ("detector", "segmenter", "ocr_ja", "inpaint_lama")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REQUIREMENTS = REPO_ROOT / "requirements-manga.txt"
 
+# Running "python scripts/setup_manga.py" puts scripts/ on sys.path, not the repo
+# root, so the sagemtl* packages are not importable. Put the repo root first.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 
 def install_requirements() -> int:
     """Install requirements-manga.txt with the current interpreter's pip."""

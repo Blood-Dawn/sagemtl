@@ -43,9 +43,19 @@ python scripts/build_desktop.py --manga --zip
 
 Specs: `pyinstaller-desktop.spec` (novel-focused, excludes numpy/PIL) and
 `pyinstaller-manga.spec` (full manga build via PyInstaller `collect_all`). The
-manga build is several GB and typically exceeds a GitHub release asset (2 GB per
-file), so host it off GitHub. A frozen build cannot `pip install` more into itself,
-so anything not bundled by the chosen spec is unavailable in that build.
+manga build is a one-folder distribution (`dist/SageMTL/`) of ~1.9 GB uncompressed
+(torch/paddle/unidic_lite/opencv dominate); the zip (`dist/SageMTL-windows.zip`)
+lands under GitHub's 2 GB per-asset limit, so a GitHub Release is viable. Model
+WEIGHTS still download on first use into `~/.sagemtl/models/`. A frozen build
+cannot `pip install` more into itself, so anything not bundled by the chosen spec
+is unavailable in that build.
+
+Frozen-entry note: `sagemtl_desktop/main.py` is run as `__main__` in a frozen
+build (no package context), so its entry import falls back from relative to
+absolute (`from sagemtl_desktop.ui.main_window import MainWindow`). Validate a
+packaged build headlessly with `SAGEMTL_SELFTEST=1` (optionally
+`SAGEMTL_SELFTEST_LOG=<path>`): it imports the full heavy stack + every manga
+module, writes the result, and exits non-zero on any import failure.
 
 ## 3. Test and lint commands
 

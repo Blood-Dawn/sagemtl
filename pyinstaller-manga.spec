@@ -94,10 +94,11 @@ _sources = Path("sagemtl_manga_crawler/sources")
 if _sources.exists():
     datas.append((str(_sources), "sagemtl_manga_crawler/sources"))
 
-# App resources (icons, etc.).
+# App resources (icons, etc.). main.py resolves these via Path(__file__).parent,
+# so they must land next to the package (sagemtl_desktop/resources), not top-level.
 _resources = Path("sagemtl_desktop/resources")
 if _resources.exists():
-    datas.append((str(_resources), "resources"))
+    datas.append((str(_resources), "sagemtl_desktop/resources"))
 
 # Optional Argos language packs (bundled if the user installed any).
 try:
