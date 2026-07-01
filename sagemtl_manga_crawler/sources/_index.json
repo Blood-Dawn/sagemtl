@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "sources": [
+    {
+      "name": "mangadex",
+      "lang": "en",
+      "is_webtoon": false,
+      "nsfw": false,
+      "base_urls": [
+        "https://api.mangadex.org",
+        "https://mangadex.org"
+      ]
+    },
+    {
+      "name": "suwayomi",
+      "lang": "en",
+      "is_webtoon": false,
+      "nsfw": false,
+      "config_driven": true,
+      "note": "Bridge to a user-run Suwayomi-Server; configure manga_suwayomi_url + manga_suwayomi_source_id. Not auto-discovered (runtime config required)."
+    }
+  ]
+}

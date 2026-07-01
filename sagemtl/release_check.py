@@ -58,7 +58,36 @@ def build_release_checks(include_integration: bool = False) -> list[ReleaseCheck
         ReleaseCheck(
             key="lint",
             description="Ruff lint",
-            command=[python, "-m", "ruff", "check", "sagemtl", "sagemtl_desktop", "sagemtl_crawler", "tests"],
+            command=[
+                python, "-m", "ruff", "check",
+                "sagemtl", "sagemtl_desktop", "sagemtl_crawler", "sagemtl_manga_crawler",
+                "scripts", "tests",
+            ],
+            required=True,
+        ),
+        ReleaseCheck(
+            key="manga_licenses",
+            description="LICENSES-MANGA.md present",
+            command=[
+                python, "-c",
+                "from pathlib import Path; "
+                "raise SystemExit(0 if Path('LICENSES-MANGA.md').exists() else 1)",
+            ],
+            required=True,
+        ),
+        ReleaseCheck(
+            key="manga_lazy_imports",
+            description="Manga module gains no heavy ML import (novel path stays light)",
+            command=[
+                python, "-c",
+                (
+                    "import sys; import sagemtl_desktop.core.manga.pipeline; "
+                    "heavy=('torch','onnxruntime','paddle','paddleocr','transformers','cv2','manga_ocr','easyocr','huggingface_hub','numpy'); "
+                    "leaked=[m for m in heavy if m in sys.modules]; "
+                    "print('Heavy modules leaked:', leaked) if leaked else print('Manga lazy-import OK'); "
+                    "raise SystemExit(1 if leaked else 0)"
+                ),
+            ],
             required=True,
         ),
         ReleaseCheck(
@@ -70,7 +99,7 @@ def build_release_checks(include_integration: bool = False) -> list[ReleaseCheck
         ReleaseCheck(
             key="imports",
             description="Import smoke check",
-            command=[python, "-c", "import sagemtl, sagemtl_desktop, sagemtl_crawler; print('Import smoke check passed')"],
+            command=[python, "-c", "import sagemtl, sagemtl_desktop, sagemtl_crawler, sagemtl_manga_crawler; print('Import smoke check passed')"],
             required=True,
         ),
     ]

@@ -20,6 +20,9 @@ def test_build_release_checks_default_includes_core_checks():
     assert "tests_non_integration" in keys
     assert "imports" in keys
     assert "tests_integration" not in keys
+    # manga module release checks
+    assert "manga_licenses" in keys
+    assert "manga_lazy_imports" in keys
 
 
 def test_run_release_checks_collects_output(monkeypatch):

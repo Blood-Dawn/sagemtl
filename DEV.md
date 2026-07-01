@@ -33,8 +33,19 @@ python -m sagemtl --help
 Build desktop executable:
 
 ```powershell
-pyinstaller pyinstaller-desktop.spec
+# Novel-focused build (small; manga ML installs on demand from source):
+python scripts/build_desktop.py
+# Full manga-enabled build (large; bundles torch/paddle/transformers/onnx/opencv/
+# manga-ocr + crawler + fonts so the whole app works frozen; model weights still
+# download on first use). Add --zip to package dist/SageMTL:
+python scripts/build_desktop.py --manga --zip
 ```
+
+Specs: `pyinstaller-desktop.spec` (novel-focused, excludes numpy/PIL) and
+`pyinstaller-manga.spec` (full manga build via PyInstaller `collect_all`). The
+manga build is several GB and typically exceeds a GitHub release asset (2 GB per
+file), so host it off GitHub. A frozen build cannot `pip install` more into itself,
+so anything not bundled by the chosen spec is unavailable in that build.
 
 ## 3. Test and lint commands
 
@@ -90,6 +101,14 @@ Shared packages:
 
 - `sagemtl/` contains CLI, clean/crawl helpers, job store, shared config, and release-check automation.
 - `sagemtl_crawler/` contains an adapter-based crawler engine not fully wired into current desktop flow.
+
+Manga module:
+
+- `sagemtl_desktop/core/manga/` holds the image pipeline: `pipeline.MangaPipeline` chains detect -> reading_order -> ocr -> translate -> inpaint -> typeset (with `webtoon` strip tiling), plus `model_registry` (lazy download/cache + non-commercial guard), `library.MangaLibrary`, `jobs` (Qt-free crawl/translate/export/re-render), and `exporter` (CBZ/PDF/folder).
+- `sagemtl_desktop/ui/manga/` holds the thin widgets (`manga_view`, `reader_widget`, `typeset_editor`); `MainWindow` adds a Novels/Manga `QStackedWidget` mode switch and a Manga menu (the manga view is created lazily so startup stays light).
+- `sagemtl_manga_crawler/` mirrors the novel crawler for page-image sources (MangaDex official API).
+- ALL heavy ML imports (torch, onnxruntime, paddle, transformers, opencv, manga-ocr) are lazy inside `core/manga/*`; the novel path gains no heavy import (enforced by `tests/test_manga_skeleton.py` and the `manga_lazy_imports` release check). Manga deps live in `requirements-manga.txt` (installed on demand via `scripts/setup_manga.py`); models download to `~/.sagemtl/models/` at first use.
+- Tests: per-stage unit tests are non-integration (run by default); real-model/network checks are `integration`-marked (detector/OCR/translate/inpaint/pipeline on Tier A images, and a live MangaDex search/download). Run them explicitly with `-m integration`.
 
 ## 5. Verified baseline (2026-02-09)
 

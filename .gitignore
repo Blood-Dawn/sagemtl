@@ -20,3 +20,6 @@ data/
 !.gitkeep
 !tests/data/
 !tests/data/**
+
+# Manga test image fixtures (downloaded at test time, not committed)
+tests/manga/fixtures/

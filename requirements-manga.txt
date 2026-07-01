@@ -1,0 +1,46 @@
+# SageMTL Manga Module Requirements
+#
+# Installed ON DEMAND, never at app launch. The novel/desktop path must not
+# depend on anything here. A user who never opens Manga mode pays nothing
+# (every heavy import is lazy inside core/manga/*).
+#
+# Install:  python scripts/setup_manga.py        (installs + warms model cache)
+#       or: pip install -r requirements-manga.txt
+#
+# Only permissive (Apache-2.0 / MIT) weights are downloaded by the model
+# registry; non-commercial models are never bundled (see LICENSES-MANGA.md).
+#
+# Pins below are a confirmed working matrix on Python 3.11 (Windows, CPU).
+# For CUDA, install the matching torch/onnxruntime-gpu/paddlepaddle-gpu builds
+# per the README instead of the CPU wheels.
+
+# --- core image + ML (required for detect/inpaint/typeset) ---
+numpy==2.3.5
+opencv-python-headless==4.13.0.92
+pillow==12.2.0
+shapely==2.1.2
+huggingface_hub==1.21.0
+onnxruntime==1.27.0            # detector ONNX (CPU); use onnxruntime-gpu on CUDA
+
+# --- OCR (Japanese) + offline MT (m2m100) + VLM escalation ---
+torch==2.12.1                 # CPU build here; use the CUDA build on GPU
+transformers==5.12.1
+manga-ocr==0.1.14
+
+# --- OCR (Korean / Chinese) ---
+paddleocr==3.7.0
+paddlepaddle==3.3.1           # or paddlepaddle-gpu; construct PaddleOCR(enable_mkldnn=False) on CPU
+
+# --- optional secondary OCR (lighter, no paddle) ---
+# easyocr
+
+# --- optional neural inpaint (default path is classical OpenCV) ---
+# iopaint                      # bundles LaMa (Apache-2.0); degrades to cv2.inpaint if absent
+
+# --- optional offline LLM translation (Sugoi / X-ALMA GGUF) ---
+# llama-cpp-python
+
+# --- optional cloud providers (keys via env vars only) ---
+# anthropic
+# google-genai
+# openai

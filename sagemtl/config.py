@@ -84,6 +84,62 @@ class Settings(BaseModel):
     desktop_ui_language: str = "en"
     """Desktop UI language code."""
 
+    # --- Manga module (spec 12). API keys are never stored here; only the name
+    # of the environment variable that holds the key (manga_cloud_api_key_env).
+    manga_engine_mode: Literal["offline", "hybrid", "cloud"] = "hybrid"
+    """Manga pipeline engine mode."""
+
+    manga_target_lang: str = "en"
+    """Manga translation target language."""
+
+    manga_source_lang: str = "auto"
+    """Manga source language (auto-detect by default)."""
+
+    manga_detector_model: str = "ogkalu/comic-text-and-bubble-detector"
+    """Bubble/text detector model id."""
+
+    manga_ja_ocr_model: str = "kha-white/manga-ocr-base"
+    """Japanese OCR model id."""
+
+    manga_cjk_ocr_engine: Literal["paddleocr", "easyocr"] = "paddleocr"
+    """Korean/Chinese OCR engine."""
+
+    manga_ocr_vlm_model: str = "PaddlePaddle/PaddleOCR-VL"
+    """Vision-LLM OCR escalation model id."""
+
+    manga_inpaint_model: str = "dreMaz/AnimeMangaInpainting"
+    """Neural inpaint model id."""
+
+    manga_offline_mt_model: str = "haoranxu/X-ALMA-13B-Group6"
+    """Offline machine-translation model id."""
+
+    manga_cloud_provider: Literal["anthropic", "google", "openai", "none"] = "anthropic"
+    """Cloud translation provider."""
+
+    manga_cloud_model: str = "claude-sonnet-4-6"
+    """Cloud translation model snapshot id."""
+
+    manga_cloud_api_key_env: str = "ANTHROPIC_API_KEY"
+    """Name of the environment variable holding the cloud API key."""
+
+    manga_cost_ceiling_usd_per_chapter: float = Field(default=1.0, ge=0.0)
+    """Hard cost ceiling per chapter for cloud translation, in USD."""
+
+    manga_font_path: str = "core/manga/fonts/ComicNeue-Bold.ttf"
+    """Default typeset font path."""
+
+    manga_enable_vertical_cjk: bool = False
+    """Enable vertical CJK (tate-gaki) rendering."""
+
+    manga_device: Literal["auto", "cpu", "cuda"] = "auto"
+    """Compute device selection for manga models."""
+
+    manga_suwayomi_url: str = ""
+    """Optional Suwayomi-Server base URL for the bring-your-own-extensions source."""
+
+    manga_suwayomi_source_id: str = ""
+    """Suwayomi source id to search/read within the configured server."""
+
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     @property

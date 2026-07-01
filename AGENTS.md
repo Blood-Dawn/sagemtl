@@ -43,6 +43,7 @@ Do not create new standalone markdown docs unless explicitly requested.
 - UI localization and recovery hint logic live in `sagemtl_desktop/ui/i18n.py` and `sagemtl_desktop/ui/error_hints.py`.
 - `GenericNovelCrawler` is now used as a fallback path behind the wrapper/service.
 - `sagemtl_crawler/` exists but is not the main desktop runtime path.
+- Manga module: image pipeline in `sagemtl_desktop/core/manga/`, thin UI in `sagemtl_desktop/ui/manga/` (Novels/Manga mode switch in `MainWindow`), page-image crawler in `sagemtl_manga_crawler/`. Heavy ML deps are isolated and lazy-imported there (`requirements-manga.txt`, installed on demand); the novel path must keep gaining no heavy import. Ship only Apache-2.0/MIT/OFL weights+fonts (see `LICENSES-MANGA.md`); non-commercial models are gated behind research mode in `model_registry`.
 
 Important: Never assume old docs are correct; validate behavior in code before making claims.
 

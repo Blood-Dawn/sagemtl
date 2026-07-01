@@ -5,7 +5,8 @@ Main application window.
 import contextlib
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QSplitter, QFileDialog, QMessageBox, QDialog, QTextEdit
+    QMainWindow, QWidget, QVBoxLayout, QSplitter, QFileDialog, QMessageBox, QDialog, QTextEdit,
+    QStackedWidget
 )
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QAction, QActionGroup
@@ -111,6 +112,74 @@ class MainWindow(QMainWindow):
         """Translate a UI string key for the active interface language."""
         return ui_tr(self.ui_language, key, **kwargs)
 
+    # ===== Manga mode =====
+
+    def _create_manga_menu(self):
+        """Add the Manga menu (mode switch + crawl/translate/export actions)."""
+        manga_menu = self.menuBar().addMenu(self._tr("menu.manga"))
+
+        switch_action = QAction(self._tr("mode.manga"), self)
+        switch_action.triggered.connect(self._switch_to_manga_mode)
+        manga_menu.addAction(switch_action)
+
+        novels_action = QAction(self._tr("mode.novels"), self)
+        novels_action.triggered.connect(self._switch_to_novel_mode)
+        manga_menu.addAction(novels_action)
+
+        manga_menu.addSeparator()
+        for key, handler in (
+            ("action.manga_add_url", self._manga_add_series),
+            ("action.manga_translate", self._manga_translate_chapter),
+            ("action.manga_open_reader", self._switch_to_manga_mode),
+            ("action.manga_studio", self._manga_open_studio),
+            ("action.manga_export", self._manga_export_chapter),
+        ):
+            action = QAction(self._tr(key), self)
+            action.triggered.connect(handler)
+            manga_menu.addAction(action)
+
+    def _ensure_manga_view(self):
+        """Lazily build the manga workspace (keeps startup and the novel path light)."""
+        if self._manga_view is None:
+            from ..core.manga.library import MangaLibrary
+            from .manga.manga_view import MangaView
+
+            library = MangaLibrary()
+            store = self.desktop_settings_store
+            self._manga_view = MangaView(
+                self.job_manager,
+                library,
+                lambda: store.load_manga(),
+                glossary=self.glossary_manager,
+                language=self.ui_language,
+            )
+            self._mode_stack.addWidget(self._manga_view)
+        return self._manga_view
+
+    def _switch_to_manga_mode(self):
+        view = self._ensure_manga_view()
+        view.refresh_series()
+        self._mode_stack.setCurrentWidget(view)
+
+    def _switch_to_novel_mode(self):
+        self._mode_stack.setCurrentWidget(self._novel_container)
+
+    def _manga_add_series(self):
+        self._switch_to_manga_mode()
+        self._manga_view.add_series_by_url()
+
+    def _manga_translate_chapter(self):
+        self._switch_to_manga_mode()
+        self._manga_view.translate_selected_chapter()
+
+    def _manga_export_chapter(self):
+        self._switch_to_manga_mode()
+        self._manga_view.export_selected_chapter()
+
+    def _manga_open_studio(self):
+        self._switch_to_manga_mode()
+        self._manga_view.open_studio()
+
     def _init_ui(self):
         """Initialize UI - Modern layout with URL history"""
         # Central widget
@@ -166,6 +235,18 @@ class MainWindow(QMainWindow):
         main_splitter.setSizes([300, 900])
 
         layout.addWidget(main_splitter)
+
+        # Novels/Manga mode switch: wrap the novel content in a stacked widget so
+        # the manga workspace can be swapped in without disturbing the novel UI.
+        # The manga view is created lazily on first use (keeps startup light).
+        self._novel_container = central_widget
+        self._mode_stack = QStackedWidget()
+        self._mode_stack.addWidget(central_widget)  # index 0 = Novels
+        self._manga_view = None
+        self.setCentralWidget(self._mode_stack)
+
+        # Manga menu (added after the standard menus are built).
+        self._create_manga_menu()
 
     def _create_menu_bar(self):
         """Create menu bar with all actions organized"""

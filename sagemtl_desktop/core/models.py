@@ -22,6 +22,10 @@ class JobType(Enum):
     CRAWL_URL = "crawl_url"
     TRANSLATE = "translate"
     EXPORT = "export"
+    # Manga module job types (spec section 11, item 4)
+    MANGA_CRAWL = "manga_crawl"
+    MANGA_TRANSLATE = "manga_translate"
+    MANGA_EXPORT = "manga_export"
 
 
 @dataclass

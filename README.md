@@ -59,6 +59,32 @@ pip install googletrans==4.0.0rc1
 python -m sagemtl_desktop.main
 ```
 
+## Manga module (optional)
+
+SageMTL also has a Manga mode that translates raw manga/manhwa/manhua in place:
+detect text -> OCR (Japanese via manga-ocr, Korean/Chinese via PaddleOCR) ->
+translate (offline m2m100 by default, or a cloud vision-LLM) -> erase + inpaint ->
+re-letter, plus a MangaDex crawler and CBZ/PDF export. Switch between Novels and
+Manga from the **Manga** menu.
+
+The manga dependencies and model weights are **not** installed with the desktop
+app -- the novel path works without them. Install them on demand:
+
+```powershell
+python scripts/setup_manga.py            # installs requirements-manga.txt + warms the model cache
+# or: pip install -r requirements-manga.txt
+```
+
+- Models download on first use into `~/.sagemtl/models/` (nothing is bundled).
+- CPU works out of the box (ONNX detector, `PaddleOCR(enable_mkldnn=False)`); for
+  CUDA install the matching `torch` / `onnxruntime-gpu` / `paddlepaddle-gpu` wheels.
+- Cloud translation reads the API key from an environment variable only (e.g.
+  `ANTHROPIC_API_KEY`); keys are never stored in `config.toml`.
+- Only permissive (Apache-2.0 / MIT / OFL) weights and fonts ship; non-commercial
+  models are never bundled and require an explicit research-mode opt-in. See
+  `LICENSES-MANGA.md`. Default and promoted crawler source is the MangaDex official
+  API; use the tool for content you have a right to access.
+
 ## CLI entry points
 
 - Show help: `python -m sagemtl --help`
@@ -69,9 +95,10 @@ python -m sagemtl_desktop.main
 
 ## Project structure
 
-- `sagemtl_desktop/` desktop UI and desktop core services
+- `sagemtl_desktop/` desktop UI and desktop core services (manga module under `core/manga/` and `ui/manga/`)
 - `sagemtl/` shared CLI, cleaning, crawl helpers, queue, config
 - `sagemtl_crawler/` adapter-based crawler engine (currently separate from desktop runtime path)
+- `sagemtl_manga_crawler/` page-image crawler (MangaDex official-API source)
 - `tests/` automated tests
 
 ## Documentation
@@ -79,6 +106,7 @@ python -m sagemtl_desktop.main
 - `DEV.md` developer setup, architecture, testing, optimization audit
 - `ROADMAP.md` single execution plan with completed and pending work
 - `AGENTS.md` operating instructions for AI coding agents
+- `LICENSES-MANGA.md` manga model/font licenses and the non-commercial-model policy
 
 ## License
 

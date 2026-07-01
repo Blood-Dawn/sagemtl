@@ -133,3 +133,17 @@ coll = COLLECT(
 # >>> argostranslate.package.install_from_path(download_path)
 #
 # After installing the packages, they will be automatically bundled when you build with PyInstaller.
+#
+# Manga module (optional, NOT in the default build):
+# The default installer deliberately excludes numpy/PIL and does not bundle any
+# manga ML dependency or model weights, so the novel app stays small and launches
+# without manga deps present. Manga support is installed on demand
+# (`python scripts/setup_manga.py`) and models download at first use into
+# `~/.sagemtl/models/`. To build a manga-ENABLED distribution instead:
+#   * `pip install -r requirements-manga.txt` into the build env;
+#   * remove 'numpy' and 'PIL' from `excludes` above;
+#   * add hidden imports as needed (e.g. 'onnxruntime', 'cv2', 'manga_ocr',
+#     'transformers', 'paddleocr');
+#   * bundle the OFL fonts:
+#       datas.append(('sagemtl_desktop/core/manga/fonts', 'core/manga/fonts'))
+#   Prefer first-run model download over bundling weights to keep the installer small.
